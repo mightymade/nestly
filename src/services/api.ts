@@ -3,10 +3,12 @@
  * like a real network call, so loading states are designed from day one.
  * Swap the bodies for Supabase calls later; keep the names and return shapes.
  */
-import type { Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
+import type { Invite, Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
 import { nowTime, sleep } from '../lib/format';
 import { storage } from '../lib/storage';
-import { commit, getDb, onFreshData } from './db';
+import { clearAndReload, commit, getDb, onFreshData, reload } from './db';
+import { authUid, friendly } from './remote';
+import { live, sb, siteUrl } from './supabase';
 import { bearing, distanceKm, offset, type LatLng } from '../lib/geo';
 
 const SESSION = 'nestly.session';
@@ -37,7 +39,8 @@ export const semBookings = (hid: string, s: Semester) => getDb().bookings.filter
 /** The semester students can book at this hostel now: the first open one that has not ended. */
 export const bookingSem = (h: Hostel) => { const today = new Date().toISOString().slice(0, 10); return hostelSems(h).find(s => s.open && s.end >= today) ?? null; };
 
-export class ApiError extends Error { constructor(msg: string, public field?: string) { super(msg); } }
+import { ApiError } from './errors';
+export { ApiError };
 
 const safe = (u: User): User => ({ ...u, password: '' });
 function notify(userId: string | undefined, n: Omit<Notification, 'id' | 'userId' | 'at' | 'read'>) {
@@ -47,13 +50,45 @@ function notify(userId: string | undefined, n: Omit<Notification, 'id' | 'userId
 const custodiansOf = (hostelId: string) => getDb().users.filter(u => u.role === 'custodian' && u.hostelId === hostelId);
 
 /* ---------- Auth ---------- */
+/** Live mode log in: usernames are turned into the account's email first, then Supabase checks the password. */
+async function liveLogin(idOrEmail: string, password: string) {
+  const { data: email, error: e1 } = await sb!.rpc('email_for_login', { p_login: idOrEmail.trim() });
+  if (e1) throw new ApiError(friendly(e1), 'id');
+  if (!email) throw new ApiError('We could not find an account with that username.', 'id');
+  const { data, error } = await sb!.auth.signInWithPassword({ email: email as string, password });
+  if (error) {
+    if (/confirm/i.test(error.message)) throw new ApiError('Confirm your email first. Open the link we sent you when you signed up.', 'id');
+    if (/invalid/i.test(error.message)) throw new ApiError(idOrEmail.includes('@') ? 'That email and password do not match. Try again or reset your password.' : 'That password is not right. Try again or reset it.', 'password');
+    throw new ApiError(friendly(error), 'id');
+  }
+  await reload();
+  const u = getDb().users.find(x => x.id === data.user.id);
+  if (!u || u.suspended) { await sb!.auth.signOut(); await clearAndReload(); throw new ApiError(u ? 'Your account is paused. Contact support@nestly.app.' : 'This account is not set up. Contact support@nestly.app.', 'id'); }
+  u.lastActive = isoNow(); await commit().catch(() => undefined);
+  return safe(u);
+}
+/** Live mode sign up. Supabase emails a confirmation link that brings the person back to `back`, signed in. */
+async function liveSignUp(email: string, password: string, back: string, meta: Record<string, unknown>) {
+  const { data, error } = await sb!.auth.signUp({ email, password, options: { emailRedirectTo: siteUrl() + back, data: meta } });
+  if (error) {
+    if (/registered|exists/i.test(error.message)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
+    if (/password/i.test(error.message)) throw new ApiError('Choose a stronger password: 8 or more characters with letters and numbers.', 'password');
+    if (/rate|seconds/i.test(error.message)) throw new ApiError('Too many sign-ups from here just now. Wait a minute and try again.');
+    if (/database error/i.test(error.message)) throw new ApiError('We could not create the account. Check your details and try again.');
+    throw new ApiError(friendly(error));
+  }
+  // Supabase answers an already-used email with an empty user, so nobody can test which emails have accounts.
+  if (data.user && !data.user.identities?.length) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
+  if (data.session) await reload();
+}
 export function sessionUser(): User | null {
-  const uid = storage.get<string | null>(SESSION, null);
+  const uid = live ? authUid : storage.get<string | null>(SESSION, null);
   const u = uid ? getDb().users.find(x => x.id === uid) : null;
   return u && !u.suspended ? safe(u) : null;
 }
 /** Logs someone in. Takes an email or username and a password. Returns the user, or throws ApiError with `field` set to "id" or "pw". */
 export async function login(idOrEmail: string, password: string) {
+  if (live) return liveLogin(idOrEmail, password);
   await wait(600);
   const key = idOrEmail.trim().toLowerCase();
   const u = getDb().users.find(x => x.email.toLowerCase() === key || x.username?.toLowerCase() === key);
@@ -61,15 +96,26 @@ export async function login(idOrEmail: string, password: string) {
   if (u.password !== password) throw new ApiError('That password is not right. Try again or reset it.', 'password');
   if (u.suspended) throw new ApiError('Your account is paused. Contact support@nestly.app.', 'id');
   u.lastActive = isoNow();
-  storage.set(SESSION, u.id); commit();
+  storage.set(SESSION, u.id); await commit();
   return safe(u);
 }
 /** Ends the session on this device. */
-export async function logout() { await wait(200); storage.remove(SESSION); commit(); }
+export async function logout() {
+  if (live) { await sb!.auth.signOut(); await clearAndReload(); return; }
+  await wait(200); storage.remove(SESSION); await commit();
+}
 /** Sends a reset link if the email has an account. Always looks successful, so it never reveals who has an account. */
 export async function requestPasswordReset(email: string) {
   await wait(500);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError('Enter the email you signed up with.', 'email');
+  if (live) { const { error } = await sb!.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: siteUrl() + '/reset-password' }); if (error && /rate|network|fetch/i.test(error.message)) throw new ApiError(friendly(error)); }
+}
+/** After opening a reset link: saves the new password for the person the link signed in. */
+export async function setNewPassword(password: string) {
+  if (!live) { await wait(400); return; }
+  const { data } = await sb!.auth.getSession(); if (!data.session) throw new ApiError('This reset link has expired. Ask for a new one from the login page.');
+  const { error } = await sb!.auth.updateUser({ password }); if (error) throw new ApiError(/same|different/i.test(error.message) ? 'Choose a password you have not used here before.' : friendly(error), 'password');
+  await reload();
 }
 
 /** Every university Nestly supports, straight away (no loading). */
@@ -95,15 +141,25 @@ export async function signupStudent(input: { uniId: string; name: string; email:
   await wait(700);
   const db = getDb(); const email = input.email.trim().toLowerCase();
   if (!emailMatchesUniversity(email, input.uniId)) throw new ApiError(`Use your ${universityById(input.uniId)?.short} student email. It must end with ${universityById(input.uniId)?.domain}.`, 'email');
+  if (live) {
+    await liveSignUp(email, input.password, '/s/explore', { role: 'student', name: input.name.trim(), phone: input.phone || null, university_id: input.uniId });
+    return { id: '', role: 'student', name: input.name.trim(), email, password: '', universityId: input.uniId, emailVerified: false } as User;
+  }
   if (db.users.some(u => u.email.toLowerCase() === email)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
   const u: User = { id: id('u'), role: 'student', name: input.name.trim(), email, phone: input.phone || undefined, password: input.password, universityId: input.uniId, emailVerified: false };
-  db.users.push(u); sendVerification(u); storage.set(SESSION, u.id); commit();
+  db.users.push(u); sendVerification(u); storage.set(SESSION, u.id); await commit();
   return safe(u);
+}
+/** Sends the sign-up confirmation email again, to an address that has not confirmed yet. */
+export async function resendConfirmation(email: string, back = '/s/explore') {
+  if (!live) { const u = getDb().users.find(x => x.email === email); if (u) await resendVerification(u.id); return; }
+  const { error } = await sb!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: siteUrl() + back } });
+  if (error) throw new ApiError(/rate|seconds/i.test(error.message) ? 'Wait a minute before asking for another email.' : friendly(error));
 }
 /** Sends the student email confirmation again. */
 export async function resendVerification(userId: string) {
   await wait(500); const u = getDb().users.find(x => x.id === userId)!;
-  getDb().mail = getDb().mail.filter(m => m.to !== u.email); sendVerification(u); commit();
+  getDb().mail = getDb().mail.filter(m => m.to !== u.email); sendVerification(u); await commit();
 }
 /** Demo only: the emails "sent" to an address, so the demo inbox can show them. A real backend sends real email instead. */
 export async function inbox(email: string) { await wait(250); return getDb().mail.filter(m => m.to === email); }
@@ -112,11 +168,20 @@ export async function confirmEmail(token: string) {
   await wait(600); const db = getDb();
   const m = db.mail.find(x => x.token === token); if (!m) throw new ApiError('This link has expired. Ask for a new one.');
   const u = db.users.find(x => x.email === m.to)!; u.emailVerified = true; u.verifiedUntil = '31 Aug 2027';
-  db.mail = db.mail.filter(x => x.id !== m.id); commit(); return safe(u);
+  db.mail = db.mail.filter(x => x.id !== m.id); await commit(); return safe(u);
 }
 
 /** Checks a custodian invite code. Returns the invite and its hostel, or throws ApiError if it is wrong, used or expired. */
 export async function lookupInvite(code: string) {
+  if (live) {
+    const { data, error } = await sb!.rpc('lookup_invite', { p_code: code.trim() }); if (error) throw new ApiError(friendly(error), 'code');
+    const inv = data as (Invite & { expired: boolean; hostel: Hostel }) | null;
+    if (!inv) throw new ApiError('That invite code is not valid. Check it with the hostel owner.', 'code');
+    if (inv.used) throw new ApiError('This invite has already been used.', 'code');
+    if (inv.cancelled) throw new ApiError('The owner cancelled this invite. Ask them for a new one.', 'code');
+    if (inv.expired) throw new ApiError('This invite has expired. Ask the owner to send it again.', 'code');
+    return inv;
+  }
   await wait(500);
   const inv = getDb().invites.find(i => i.code.toUpperCase() === code.trim().toUpperCase());
   if (!inv) throw new ApiError('That invite code is not valid. Check it with the hostel owner.', 'code');
@@ -125,6 +190,17 @@ export async function lookupInvite(code: string) {
 }
 /** Creates the custodian account from an invite code. Takes name, username and password. Returns the new user. */
 export async function acceptInvite(code: string, input: { name: string; username: string; password: string }) {
+  if (live) {
+    // A server function creates the account, so custodians without an email address can still join.
+    const { data, error } = await sb!.functions.invoke('accept-invite', { body: { code, name: input.name.trim(), username: input.username.trim().toLowerCase(), password: input.password } });
+    if (error || !data?.email) {
+      let msg = 'We could not create your account. Try again.'; let field: string | undefined;
+      try { const body = await (error as { context?: Response })?.context?.json(); if (body?.error) { msg = body.error; field = body.field; } } catch { /* keep the general message */ }
+      if (data?.error) { msg = data.error; field = data.field; }
+      throw new ApiError(msg, field);
+    }
+    return liveLogin(data.email as string, input.password);
+  }
   await wait(700); const db = getDb();
   const inv = db.invites.find(i => i.code.toUpperCase() === code.trim().toUpperCase());
   if (!inv || inv.used) throw new ApiError('This invite is no longer valid.');
@@ -132,11 +208,12 @@ export async function acceptInvite(code: string, input: { name: string; username
   if (db.users.some(u => u.username?.toLowerCase() === uname)) throw new ApiError('That username is taken. Try another.', 'username');
   const viaSms = inv.email.endsWith('@sms.nestly.app');
   const u: User = { id: id('u'), role: 'custodian', name: input.name.trim(), username: uname, email: inv.email, phone: viaSms ? inv.email.split('@')[0] : undefined, password: input.password, emailVerified: true, hostelId: inv.hostelId, joined: isoNow(), lastActive: isoNow() };
-  db.users.push(u); inv.used = true; storage.set(SESSION, u.id); commit(); return safe(u);
+  db.users.push(u); inv.used = true; storage.set(SESSION, u.id); await commit(); return safe(u);
 }
 
 /* ---------- Profile and settings ---------- */
 export async function usernameAvailable(name: string, selfId: string) {
+  if (live) { const { data } = await sb!.rpc('username_free', { p_username: name.trim() }); return !!data; }
   await wait(250); const n = name.trim().toLowerCase();
   return !getDb().users.some(u => u.id !== selfId && u.username?.toLowerCase() === n);
 }
@@ -153,14 +230,28 @@ export async function updateProfile(userId: string, patch: Partial<Pick<User, 'n
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(patch.email)) throw new ApiError('Enter a full email address.', 'email');
     if (db.users.some(x => x.id !== userId && x.email === patch.email)) throw new ApiError('Another account uses this email.', 'email');
   }
-  Object.assign(u, patch); commit(); return safe(u);
+  if (live && patch.email !== undefined && patch.email !== u.email) {
+    // The new address gets a confirmation link; the profile switches over once it is opened.
+    const { error } = await sb!.auth.updateUser({ email: patch.email.trim().toLowerCase() }, { emailRedirectTo: siteUrl() + '/c/settings/profile' });
+    if (error) throw new ApiError(friendly(error), 'email');
+    delete patch.email;
+  }
+  Object.assign(u, patch); await commit(); return safe(u);
 }
 /** Changes the password after checking the current one. Throws ApiError on a wrong current password. */
 export async function changePassword(userId: string, current: string, next: string) {
+  if (live) {
+    if (current === next) throw new ApiError('Choose a password you have not used here before.', 'next');
+    const u = getDb().users.find(x => x.id === userId)!;
+    const check = await sb!.auth.signInWithPassword({ email: u.email, password: current });
+    if (check.error) throw new ApiError('Your current password is not right.', 'current');
+    const { error } = await sb!.auth.updateUser({ password: next }); if (error) throw new ApiError(friendly(error), 'next');
+    return;
+  }
   await wait(700); const u = getDb().users.find(x => x.id === userId)!;
   if (u.password !== current) throw new ApiError('Your current password is not right.', 'current');
   if (current === next) throw new ApiError('Choose a password you have not used here before.', 'next');
-  u.password = next; commit();
+  u.password = next; await commit();
 }
 
 /* ---------- Hostels ---------- */
@@ -169,7 +260,7 @@ const isLive = (h: Hostel) => (h.status ?? 'live') === 'live';
 /** Live hostels near a university, for Explore. */
 export async function listHostels(uniId: string) { await wait(350); return getDb().hostels.filter(h => h.uni === uniId && isLive(h)); }
 /** One hostel and its visible reviews, for the hostel page. Also counts a view. Throws if the hostel does not exist. */
-export async function getHostel(hid: string) { await wait(300); const h = hostelById(hid); if (!h) throw new ApiError('Hostel not found'); h.views = (h.views ?? 0) + 1; return { hostel: h, reviews: getDb().reviews.filter(r => r.hostelId === hid && !r.hidden) }; }
+export async function getHostel(hid: string) { await wait(300); const h = hostelById(hid); if (!h) throw new ApiError('Hostel not found'); if (live) void sb!.rpc('bump_hostel', { p_hostel: hid, p_field: 'views' }); else h.views = (h.views ?? 0) + 1; return { hostel: h, reviews: getDb().reviews.filter(r => r.hostelId === hid && !r.hidden) }; }
 /** The cheapest room type price per semester, or 0. */
 export const minPrice = (h: Hostel) => (h.rooms.length ? Math.min(...h.rooms.map(r => r.price)) : 0);
 /** How many rooms are still free across all room types. */
@@ -180,8 +271,9 @@ export function savedIds(userId: string) { return getDb().saved[userId] ?? []; }
 /** Saves or unsaves a hostel for a student. Also counts saves for the owner. */
 export async function toggleSaved(userId: string, hid: string) {
   const list = getDb().saved[userId] ?? (getDb().saved[userId] = []);
-  const i = list.indexOf(hid); if (i >= 0) list.splice(i, 1); else { list.unshift(hid); const h = hostelById(hid); if (h) h.saves = (h.saves ?? 0) + 1; }
-  commit(); return i < 0;
+  const i = list.indexOf(hid); if (i >= 0) list.splice(i, 1); else { list.unshift(hid); const h = hostelById(hid); if (h && !live) h.saves = (h.saves ?? 0) + 1; }
+  if (live) void sb!.rpc('bump_hostel', { p_hostel: hid, p_field: 'saves', p_by: i >= 0 ? -1 : 1 });
+  await commit(); return i < 0;
 }
 /** The live hostels a student saved. */
 export async function listSaved(userId: string) { await wait(300); return (savedIds(userId).map(hostelById).filter(Boolean) as Hostel[]).filter(isLive); }
@@ -217,20 +309,20 @@ export async function createBooking(userId: string, hid: string, roomIdx: number
   notify(userId, { kind: 'booking', title: 'Booking confirmed', text: `${h.name}, ${SEM}. Ref ${b.id}.`, to: '/s/bookings' });
   notify(h.ownerId, { kind: 'booking', title: `New booking at ${h.name}`, text: `${u.name} booked a ${r.t.toLowerCase()} room for ${SEM}.`, to: '/o/bookings' });
   custodiansOf(hid).forEach(c => notify(c.id, { kind: 'tenant', title: `${u.name} needs a room`, text: `Booked a ${r.t.toLowerCase()} room. Give them a room on the Rooms page.`, to: '/c/rooms' }));
-  syncTypeCounts(hid); commit(); return b;
+  syncTypeCounts(hid); await commit(); return b;
 }
 /** Cancels a booking and frees the room. The owner sends the fee back. Returns the booking. */
 export async function cancelBooking(bid: string) {
   await wait(700); const b = getDb().bookings.find(x => x.id === bid)!;
   b.status = 'cancelled'; const r = hostelById(b.hostelId)!.rooms.find(x => x.t === b.room); if (r) r.taken--;
   getDb().tenants = getDb().tenants.filter(t => !(t.bookingId === b.id && t.status === 'due'));
-  syncTypeCounts(b.hostelId); commit(); return b;
+  syncTypeCounts(b.hostelId); await commit(); return b;
 }
 /** Adds the student's stars and review after a stay. */
 export async function rateBooking(bid: string, stars: number, text: string, who: string) {
   await wait(600); const db = getDb(); const b = db.bookings.find(x => x.id === bid)!;
   db.reviews.unshift({ id: id('v'), hostelId: b.hostelId, who, stars, when: new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }), text: text || 'No comment.' });
-  b.status = 'rated'; hostelById(b.hostelId)!.nRev++; commit();
+  b.status = 'rated'; hostelById(b.hostelId)!.nRev++; await commit();
 }
 
 /* ---------- My hostel (student) ---------- */
@@ -271,12 +363,12 @@ export async function custodianDay(hostelId: string) {
 export async function listVisitors(hostelId: string) { await wait(300); return getDb().visitors.filter(v => v.hostelId === hostelId).slice().reverse(); }
 /** Signs a visitor in, from the gate QR or by the custodian. Takes name, room, who they visit and phone. Returns the visitor. */
 export async function signInVisitor(hostelId: string, input: { name: string; room: string; host?: string; phone?: string }, via: 'QR' | 'Custodian') {
-  await wait(500); const v = { id: id('vs'), hostelId, ...input, tin: nowTime(), tout: null, via, date: todayIso() }; getDb().visitors.push(v); commit(); return v;
+  await wait(500); const v = { id: id('vs'), hostelId, ...input, tin: nowTime(), tout: null, via, date: todayIso() }; getDb().visitors.push(v); await commit(); return v;
 }
 /** Marks a visitor as left. */
-export async function signOutVisitor(vid: string) { await wait(300); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = nowTime(); commit(); }
+export async function signOutVisitor(vid: string) { await wait(300); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = nowTime(); await commit(); }
 /** Puts a visitor back inside, for the Undo button. */
-export async function undoSignOut(vid: string) { await wait(150); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = null; commit(); }
+export async function undoSignOut(vid: string) { await wait(150); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = null; await commit(); }
 /** Every tenant of a hostel: arriving, staying and left. */
 export async function listTenants(hostelId: string) { await wait(300); return getDb().tenants.filter(t => t.hostelId === hostelId); }
 /** Checks a tenant in or out. */
@@ -291,7 +383,7 @@ export async function setTenantStatus(tid: string, status: 'in' | 'out') {
     if (b && b.status === 'checked-in') b.status = 'completed';
     t.roomId = undefined; t.bed = undefined; // the bed is free again
   }
-  syncTypeCounts(t.hostelId); commit(); return t;
+  syncTypeCounts(t.hostelId); await commit(); return t;
 }
 /** Notices a custodian posted to a hostel. */
 export async function listNotices(hostelId: string) { await wait(250); return getDb().notices.filter(n => n.hostelId === hostelId); }
@@ -299,15 +391,15 @@ export async function listNotices(hostelId: string) { await wait(250); return ge
 export async function postNotice(hostelId: string, text: string, by: string) {
   await wait(500); const db = getDb(); db.notices.unshift({ id: id('n'), hostelId, text, by, at: isoNow() });
   db.tenants.filter(t => t.hostelId === hostelId && t.status === 'in' && t.userId).forEach(t => notify(t.userId, { kind: 'notice', title: `New notice at ${hostelById(hostelId)?.name}`, text, to: '/s/my-hostel' }));
-  commit();
+  await commit();
 }
 
 /* ---------- Notifications ---------- */
 export async function listNotifications(userId: string) { await wait(200); return getDb().notifications.filter(n => n.userId === userId); }
 /** Marks one notification as read. */
-export async function markRead(nid: string) { const n = getDb().notifications.find(x => x.id === nid); if (n && !n.read) { n.read = true; commit(); } }
+export async function markRead(nid: string) { const n = getDb().notifications.find(x => x.id === nid); if (n && !n.read) { n.read = true; await commit(); } }
 /** Marks all of a person's notifications as read. */
-export async function markAllRead(userId: string) { await wait(150); getDb().notifications.forEach(n => { if (n.userId === userId) n.read = true; }); commit(); }
+export async function markAllRead(userId: string) { await wait(150); getDb().notifications.forEach(n => { if (n.userId === userId) n.read = true; }); await commit(); }
 
 
 /* ---------- Quick search ---------- */
@@ -386,7 +478,7 @@ export async function setRoomAvailability(roomId: string, ready: boolean, reason
   r.status = ready ? 'ready' : 'unavailable';
   if (ready) { r.unavailableReason = undefined; r.unavailableSince = undefined; } else { r.unavailableReason = reason!.trim(); r.unavailableSince = isoNow(); }
   audit(ready ? 'Room ready' : 'Room not available', `${h.name}, ${r.no}`, ready ? 'Back in use' : r.unavailableReason!);
-  syncTypeCounts(r.hostelId); commit();
+  syncTypeCounts(r.hostelId); await commit();
 }
 /** Gives a tenant a bed in a room. */
 export async function assignRoom(tenantId: string, roomId: string, bed: number) {
@@ -397,7 +489,7 @@ export async function assignRoom(tenantId: string, roomId: string, bed: number) 
   t.roomId = r.id; t.bed = bed; t.room = r.no;
   notify(t.userId, { kind: 'tenant', title: `Your room is ${r.no}`, text: `${hostelById(r.hostelId)?.name} has a room ready for you.`, to: '/s/bookings' });
   audit('Gave a room', `${hostelById(r.hostelId)?.name}, ${r.no}`, t.name);
-  syncTypeCounts(r.hostelId); commit(); return t;
+  syncTypeCounts(r.hostelId); await commit(); return t;
 }
 /** Moves a tenant to another bed, with a reason. */
 export async function moveTenant(tenantId: string, roomId: string, bed: number, reason: string) {
@@ -408,7 +500,7 @@ export async function moveTenant(tenantId: string, roomId: string, bed: number, 
   const from = t.room; t.roomId = r.id; t.bed = bed; t.room = r.no;
   const b = db.bookings.find(x => x.id === t.bookingId); if (b && b.status === 'checked-in') b.roomNo = r.no;
   audit('Moved tenant', `${hostelById(r.hostelId)?.name}, ${from} to ${r.no}`, `${t.name}: ${reason.trim()}`);
-  syncTypeCounts(r.hostelId); commit(); return t;
+  syncTypeCounts(r.hostelId); await commit(); return t;
 }
 
 /* =====================================================================
@@ -470,7 +562,7 @@ function addMonths(u: User, months: number, via: SubPayment['via'], note?: strin
 export async function paySubscription(ownerId: string, months = 1) {
   await wait(900); const u = getDb().users.find(x => x.id === ownerId)!;
   addMonths(u, months, 'app');
-  audit('Paid subscription', u.name, `${months} month${months > 1 ? 's' : ''}`); commit(); return subscriptionOf(u);
+  audit('Paid subscription', u.name, `${months} month${months > 1 ? 's' : ''}`); await commit(); return subscriptionOf(u);
 }
 
 /* ---------- Subscriptions, admin side ---------- */
@@ -511,7 +603,7 @@ export async function recordSubPayment(ownerId: string, months: number, note: st
   if (!note.trim()) throw new ApiError('Say how they paid, like a receipt or mobile money reference.', 'note');
   const p = addMonths(u, months, 'recorded', note.trim());
   notify(u.id, { kind: 'money', title: 'Subscription payment received', text: `${ugxPlain(p.amount)} for ${months} month${months > 1 ? 's' : ''}. Thank you.`, to: '/o/money' });
-  audit('Recorded subscription payment', u.name, `${ugxPlain(p.amount)}, ${note.trim()}`); commit(); return subscriptionOf(u);
+  audit('Recorded subscription payment', u.name, `${ugxPlain(p.amount)}, ${note.trim()}`); await commit(); return subscriptionOf(u);
 }
 /** Sends an owner a payment reminder by notification and email. */
 export async function remindSubscription(ownerId: string) {
@@ -519,14 +611,14 @@ export async function remindSubscription(ownerId: string) {
   const text = s.overdue ? `Your Nestly subscription is ${s.daysLate} ${s.daysLate === 1 ? 'day' : 'days'} late. Pay ${ugxPlain(s.owed)} to keep your hostels on Nestly.` : `Your Nestly subscription of ${ugxPlain(s.fee)} is due soon.`;
   notify(u.id, { kind: 'money', title: s.overdue ? 'Your subscription is late' : 'Your subscription is due soon', text, to: '/o/money' });
   db.mail.unshift({ id: id('m'), to: u.email, subject: 'Your Nestly subscription', body: text, when: isoNow() });
-  u.subRemindedAt = isoNow(); audit('Sent payment reminder', u.name, s.overdue ? `${s.daysLate} days late` : 'Due soon'); commit();
+  u.subRemindedAt = isoNow(); audit('Sent payment reminder', u.name, s.overdue ? `${s.daysLate} days late` : 'Due soon'); await commit();
 }
 /** Gives an owner extra days before their listings can be paused. */
 export async function giveMoreTime(ownerId: string, days: number) {
   await wait(400); const u = getDb().users.find(x => x.id === ownerId)!;
   u.subGraceUntil = iso(new Date(Date.now() + days * DAY));
   notify(u.id, { kind: 'money', title: `You have ${days} more days to pay`, text: 'Your hostels stay on Nestly while you pay your subscription.', to: '/o/money' });
-  audit('Gave more time to pay', u.name, `${days} more days`); commit();
+  audit('Gave more time to pay', u.name, `${days} more days`); await commit();
 }
 /** Takes an owner's live hostels off Explore until they pay. Bookings already made stay valid. */
 export async function pauseForUnpaid(ownerId: string) {
@@ -534,7 +626,7 @@ export async function pauseForUnpaid(ownerId: string) {
   const hs = db.hostels.filter(h => h.ownerId === ownerId && h.status === 'live');
   hs.forEach(h => { h.status = 'suspended'; h.pausedFor = 'subscription'; h.suspendReason = 'Subscription not paid'; });
   notify(u.id, { kind: 'money', title: 'Your hostels are paused', text: 'Students cannot find them until you pay your subscription. They come back as soon as you pay. Bookings already made stay valid.', to: '/o/money' });
-  audit('Paused for unpaid subscription', u.name, `${hs.length} ${hs.length === 1 ? 'hostel' : 'hostels'} off Explore`); commit(); return hs.length;
+  audit('Paused for unpaid subscription', u.name, `${hs.length} ${hs.length === 1 ? 'hostel' : 'hostels'} off Explore`); await commit(); return hs.length;
 }
 /** Saves the subscription price, per hostel or per owner, and the grace days. Tells owners if the price changed. */
 export async function saveConfig(c: Config) {
@@ -544,7 +636,7 @@ export async function saveConfig(c: Config) {
   const before = subConfig(); getDb().config = { ...c };
   if (before.subFee !== c.subFee || before.perHostel !== c.perHostel) getDb().users.filter(u => u.role === 'owner' && u.ownerStatus === 'approved').forEach(u => {
     const s = subscriptionOf(u); notify(u.id, { kind: 'money', title: 'Your Nestly price is changing', text: `From your next payment you pay ${ugxPlain(s.fee)} a month.`, to: '/o/money' }); });
-  audit('Changed subscription price', 'Nestly', `${ugxPlain(c.subFee)} ${c.perHostel ? 'per hostel' : 'per owner'} a month, ${c.graceDays} days to pay${before.subFee !== c.subFee ? ` (was ${ugxPlain(before.subFee)})` : ''}`); commit();
+  audit('Changed subscription price', 'Nestly', `${ugxPlain(c.subFee)} ${c.perHostel ? 'per hostel' : 'per owner'} a month, ${c.graceDays} days to pay${before.subFee !== c.subFee ? ` (was ${ugxPlain(before.subFee)})` : ''}`); await commit();
 }
 /** Plain words for each hostel status. */
 export const STATUS_LABEL: Record<HostelStatus, string> = { draft: 'Draft', in_review: 'In review', live: 'Live', changes_requested: 'Changes requested', suspended: 'Paused' };
@@ -563,15 +655,19 @@ export async function signupOwner(input: { name: string; phone: string; email: s
   await wait(700); const db = getDb(); const email = input.email.trim().toLowerCase();
   if (db.users.some(u => u.email.toLowerCase() === email)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
   if (!/^0?7\d{8}$/.test(input.phone.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit MTN or Airtel number.', 'phone');
+  if (live) {
+    await liveSignUp(email, input.password, '/owner/signup', { role: 'owner', name: input.name.trim(), phone: input.phone.trim() });
+    return { id: '', role: 'owner', name: input.name.trim(), email, password: '', emailVerified: false, ownerStatus: 'incomplete' } as User;
+  }
   const u: User = { id: id('u'), role: 'owner', name: input.name.trim(), email, phone: input.phone, password: input.password, emailVerified: true, ownerStatus: 'incomplete', joined: isoNow() };
-  db.users.push(u); storage.set(SESSION, u.id); commit(); return safe(u);
+  db.users.push(u); storage.set(SESSION, u.id); await commit(); return safe(u);
 }
 /** Saves an uploaded ID, selfie or proof of ownership. Takes the owner, kind, file name and file data. */
 export async function uploadDoc(ownerId: string, kind: VerificationDoc['kind'], fileName: string, url: string, hostelId?: string) {
   await wait(900); const db = getDb();
   db.docs = db.docs.filter(d => !(d.ownerId === ownerId && d.kind === kind && d.hostelId === hostelId));
   const d: VerificationDoc = { id: id('d'), ownerId, hostelId, kind, fileName, url, uploadedAt: isoNow(), status: 'pending' };
-  db.docs.push(d); commit(); return d;
+  db.docs.push(d); await commit(); return d;
 }
 /** The documents an owner uploaded. */
 export const docsOf = (ownerId: string) => getDb().docs.filter(d => d.ownerId === ownerId);
@@ -581,14 +677,14 @@ export async function savePayout(ownerId: string, payout: NonNullable<User['payo
   if (password !== undefined && u.password !== password) throw new ApiError('That password is not right.', 'password');
   if (payout.method !== 'bank' && !/^0?7\d{8}$/.test(payout.to.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit mobile money number.', 'to');
   if (!payout.name.trim()) throw new ApiError('Enter the name on the account.', 'name');
-  u.payout = payout; commit(); return safe(u);
+  u.payout = payout; await commit(); return safe(u);
 }
 /** Sends a new owner to the Nestly team for checking. */
 export async function submitOwner(ownerId: string) {
   await wait(700); const u = getDb().users.find(x => x.id === ownerId)!;
   u.ownerStatus = 'pending'; u.ownerNote = undefined;
   adminIds().forEach(a => notify(a, { kind: 'review', title: 'Owner waiting for review', text: `${u.name} sent their ID and payment account.`, to: '/a/reviews' }));
-  commit(); return safe(u);
+  await commit(); return safe(u);
 }
 
 /** Every hostel an owner has, with bed counts and how many custodians each has. */
@@ -607,7 +703,7 @@ export async function createHostelDraft(ownerId: string) {
   await wait(400); const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
   const h: Hostel = { id: id('h'), seed: Math.floor(Math.random() * 20), name: '', uni: 'ucu', area: '', km: 0, dir: 0, rating: 0, nRev: 0, ownerName: u.name, ownerId,
     verified: u.ownerStatus === 'approved', fee: 40000, visit: '8:00 am to 9:00 pm', floors: 3, cols: 4, amen: [], rooms: [], about: '', status: 'draft', photos: [], rules: [], blocks: [] };
-  db.hostels.push(h); commit(); return h;
+  db.hostels.push(h); await commit(); return h;
 }
 const REVIEW_FIELDS = ['name', 'photos', 'location', 'km', 'dir'];
 /** Saves an owner's changes. Changing what students judge a listing by on a live hostel sends it back to review. */
@@ -618,13 +714,13 @@ export async function saveHostelDraft(hid: string, patch: Partial<Hostel>) {
   if (patch.location || patch.uni) syncDistance(h);
   if (patch.photos) h.photoUrl = patch.photos[0];
   if (touchesReview) { h.status = 'in_review'; h.submittedAt = isoNow(); adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing changed', text: `${h.name} changed its name, photos or location.`, to: '/a/reviews' })); }
-  commit(); return { hostel: h, sentToReview: touchesReview };
+  await commit(); return { hostel: h, sentToReview: touchesReview };
 }
 /** Saves the room types and prices of a hostel. */
 export async function updateRoomTypes(hid: string, types: RoomType[]) {
   await wait(500); const h = hostelById(hid)!;
   h.rooms = types.map(t => { const old = h.rooms.find(r => r.t === t.t); return { ...t, taken: old?.taken ?? 0 }; });
-  syncTypeCounts(hid); commit(); return h;
+  syncTypeCounts(hid); await commit(); return h;
 }
 /** Adds several numbered rooms in one go, like A-01 to A-08. */
 export async function generateRooms(hid: string, block: string, type: string, count: number, floor: number, beds: number) {
@@ -633,19 +729,19 @@ export async function generateRooms(hid: string, block: string, type: string, co
   const existing = db.rooms.filter(r => r.hostelId === hid && r.block === b).length;
   for (let i = 1; i <= count; i++) { const n = existing + i; db.rooms.push({ id: id('r'), hostelId: hid, no: `${b}-${String(n).padStart(2, '0')}`, block: b, floor, type, beds, status: 'ready' }); }
   h.blocks = Array.from(new Set([...(h.blocks ?? []), b])).sort();
-  syncTypeCounts(hid); commit();
+  syncTypeCounts(hid); await commit();
 }
 /** Changes one room: number, block, floor, type or beds. */
 export async function updateRoom(rid: string, patch: Partial<Pick<Room, 'no' | 'block' | 'floor' | 'type' | 'beds'>>) {
   await wait(300); const db = getDb(); const r = db.rooms.find(x => x.id === rid)!;
   if (patch.no && db.rooms.some(x => x.hostelId === r.hostelId && x.id !== rid && x.no.toLowerCase() === patch.no!.trim().toLowerCase())) throw new ApiError('Another room already has that number.', 'no');
-  Object.assign(r, patch); syncTypeCounts(r.hostelId); commit();
+  Object.assign(r, patch); syncTypeCounts(r.hostelId); await commit();
 }
 /** Deletes a room. Throws ApiError if someone is in it. */
 export async function deleteRoom(rid: string) {
   await wait(300); const db = getDb(); const r = db.rooms.find(x => x.id === rid)!;
   if (db.tenants.some(t => t.roomId === rid && t.status !== 'out')) throw new ApiError('Someone is in this room. Ask the custodian to move them first.');
-  db.rooms = db.rooms.filter(x => x.id !== rid); syncTypeCounts(r.hostelId); commit();
+  db.rooms = db.rooms.filter(x => x.id !== rid); syncTypeCounts(r.hostelId); await commit();
 }
 /** One line of the "ready to submit" checklist. */
 export type CheckItem = { key: string; label: string; done: boolean };
@@ -668,13 +764,13 @@ export async function submitHostelForReview(hid: string) {
   if (list.some(c => !c.done)) throw new ApiError('Finish every section first.');
   h.status = 'in_review'; h.submittedAt = isoNow(); h.reviewNote = undefined;
   adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing waiting for review', text: `${h.name} by ${h.ownerName}.`, to: '/a/reviews' }));
-  commit(); return h;
+  await commit(); return h;
 }
 
 /** The owner writes one public reply under a student's review. */
 export async function replyReview(rid: string, text: string) {
   await wait(400); const r = getDb().reviews.find(x => x.id === rid); if (!r) throw new ApiError('Review not found');
-  if (text.trim().length < 3) throw new ApiError('Write a short reply.'); r.reply = text.trim(); commit();
+  if (text.trim().length < 3) throw new ApiError('Write a short reply.'); r.reply = text.trim(); await commit();
 }
 /** The owner's home screen: next semester's beds, money, rating, what needs them, and how students find the listings. */
 export async function ownerHome(ownerId: string) {
@@ -771,19 +867,19 @@ export async function inviteCustodian(hostelId: string, name: string, contact: s
   let code = ''; do { code = `${prefix}-${1000 + Math.floor(Math.random() * 9000)}`; } while (db.invites.some(i => i.code === code));
   db.invites.push({ code, hostelId, invitedBy: me.name, email: contact.includes('@') ? contact.trim().toLowerCase() : `${contact.replace(/\s/g, '')}@sms.nestly.app`, name: name.trim(), used: false, at: isoNow() });
   notify(me.id, { kind: 'staff', title: `Invite ready for ${name.trim().split(' ')[0]}`, text: `Code ${code} for ${h.name}. It expires in 7 days.`, to: '/o/staff' });
-  commit(); return code;
+  await commit(); return code;
 }
 /** Sends an invite again and restarts its 7 days. */
-export async function resendInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.at = isoNow(); commit(); }
+export async function resendInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.at = isoNow(); await commit(); }
 /** Cancels an invite so the code stops working. */
-export async function cancelInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.cancelled = true; commit(); }
+export async function cancelInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.cancelled = true; await commit(); }
 /** Removes a custodian from a hostel. */
 export async function removeCustodian(userId: string) {
   await wait(500); const db = getDb(); const u = db.users.find(x => x.id === userId)!; const h = hostelById(u.hostelId ?? '');
   u.suspended = true; u.suspendReason = 'Removed by the owner';
   audit('Removed custodian', h?.name ?? '', u.name);
   notify(h?.ownerId, { kind: 'staff', title: `${u.name} was removed`, text: `They can no longer open ${h?.name}.`, to: '/o/staff' });
-  commit();
+  await commit();
 }
 
 /* =====================================================================
@@ -824,7 +920,7 @@ export async function approveOwner(ownerId: string) {
   db.docs.filter(d => d.ownerId === ownerId && !d.hostelId).forEach(d => { d.status = 'accepted'; });
   db.hostels.filter(h => h.ownerId === ownerId).forEach(h => { h.verified = true; });
   notify(ownerId, { kind: 'review', title: 'You are approved', text: 'Your details are checked. Bookings, Money and Staff are now open.', to: '/o/overview' });
-  audit('Approved owner', u.name, 'ID and payment account checked'); commit();
+  audit('Approved owner', u.name, 'ID and payment account checked'); await commit();
 }
 /** Rejects an owner with a reason they can read. */
 export async function rejectOwner(ownerId: string, reason: string) {
@@ -833,7 +929,7 @@ export async function rejectOwner(ownerId: string, reason: string) {
   u.ownerStatus = 'rejected'; u.ownerNote = reason.trim();
   db.docs.filter(d => d.ownerId === ownerId && !d.hostelId).forEach(d => { d.status = 'rejected'; d.note = reason.trim(); });
   notify(ownerId, { kind: 'review', title: 'We could not approve your details', text: reason.trim(), to: '/o/overview' });
-  audit('Rejected owner', u.name, reason.trim()); commit();
+  audit('Rejected owner', u.name, reason.trim()); await commit();
 }
 /** Publishes a listing on Explore. */
 export async function approveListing(hid: string) {
@@ -842,27 +938,27 @@ export async function approveListing(hid: string) {
   h.status = 'live'; h.verified = true; h.reviewNote = undefined; h.reviewSections = undefined; h.listedAt = h.listedAt ?? isoNow();
   db.docs.filter(d => d.hostelId === hid).forEach(d => { d.status = 'accepted'; });
   notify(h.ownerId, { kind: 'review', title: `${h.name} is live`, text: 'Students can now find and book it.', to: '/o/hostels' });
-  audit('Approved listing', h.name, 'Published to students'); commit();
+  audit('Approved listing', h.name, 'Published to students'); await commit();
 }
 /** Sends a listing back to the owner with a note and the sections to fix. */
 export async function requestChanges(hid: string, note: string, sections: string[] = []) {
   await wait(500); if (!note.trim()) throw new ApiError('Tell the owner what to change.', 'note');
   const h = hostelById(hid)!; h.status = 'changes_requested'; h.reviewNote = note.trim(); h.reviewSections = sections.length ? sections : undefined;
   notify(h.ownerId, { kind: 'review', title: `Changes requested for ${h.name}`, text: note.trim(), to: `/o/hostels/${hid}` });
-  audit('Requested changes', h.name, note.trim()); commit();
+  audit('Requested changes', h.name, note.trim()); await commit();
 }
 /** Pauses a hostel: it leaves Explore and the owner sees the reason. Bookings stay valid. */
 export async function suspendHostel(hid: string, reason: string) {
   await wait(500); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
   const h = hostelById(hid)!; h.status = 'suspended'; h.pausedFor = 'admin'; h.suspendReason = reason.trim();
   notify(h.ownerId, { kind: 'review', title: `${h.name} is paused`, text: `${reason.trim()} Existing bookings stay valid.`, to: '/o/hostels' });
-  audit('Paused hostel', h.name, reason.trim()); commit();
+  audit('Paused hostel', h.name, reason.trim()); await commit();
 }
 /** Puts a paused hostel back on Explore. */
 export async function restoreHostel(hid: string) {
   await wait(400); const h = hostelById(hid)!; h.status = 'live'; h.pausedFor = undefined; h.suspendReason = undefined;
   notify(h.ownerId, { kind: 'review', title: `${h.name} is live again`, text: 'Students can find it on Nestly again.', to: '/o/hostels' });
-  audit('Restored hostel', h.name, 'Back on Explore'); commit();
+  audit('Restored hostel', h.name, 'Back on Explore'); await commit();
 }
 /** Every hostel for the admin, with owner, beds, open semester, next-semester bookings, subscription state and problems. */
 export async function listAllHostels() {
@@ -897,16 +993,16 @@ export async function listUsers() {
 export async function suspendUser(userId: string, reason: string) {
   await wait(500); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
   const u = getDb().users.find(x => x.id === userId)!; u.suspended = true; u.suspendReason = reason.trim();
-  audit('Paused account', u.name, reason.trim()); commit();
+  audit('Paused account', u.name, reason.trim()); await commit();
 }
 /** Lets a paused account log in again. */
 export async function restoreUser(userId: string) {
   await wait(400); const u = getDb().users.find(x => x.id === userId)!; u.suspended = false; u.suspendReason = undefined;
-  audit('Restored account', u.name, ''); commit();
+  audit('Restored account', u.name, ''); await commit();
 }
 /** Admin sends someone a password reset link. */
 export async function sendResetLink(userId: string) {
-  await wait(500); const u = getDb().users.find(x => x.id === userId)!; audit('Sent password reset link', u.name, u.email); commit(); return u.email;
+  await wait(500); const u = getDb().users.find(x => x.id === userId)!; audit('Sent password reset link', u.name, u.email); await commit(); return u.email;
 }
 /** A student reports a listing, a review or a payment problem. Owners can report a review. Notifies the admins. */
 export async function reportListing(userId: string, hid: string, reason: string, text: string, more: { kind?: FlagKind; reviewId?: string; bookingId?: string } = {}) {
@@ -915,7 +1011,7 @@ export async function reportListing(userId: string, hid: string, reason: string,
   const f: Flag = { id: id('f'), hostelId: hid, reportedBy: userId, reason, text: text.trim(), at: isoNow(), status: 'open', kind: more.kind ?? 'listing', reviewId: more.reviewId, bookingId };
   db.flags.unshift(f);
   adminIds().forEach(a => notify(a, { kind: 'flag', title: `New report about ${h.name}`, text: `${reason}: ${text.trim() || 'No details given.'}`, to: '/a/flags' }));
-  commit(); return f;
+  await commit(); return f;
 }
 /** Every report with its hostel, owner, reporter and any review or booking it is about. */
 export async function listFlags() {
@@ -937,7 +1033,7 @@ export async function resolveFlag(fid: string, outcome: FlagOutcome, note: strin
   if (outcome === 'warned') notify(h.ownerId, { kind: 'flag', title: `A warning about ${h.name}`, text: note.trim(), to: '/o/overview' });
   if (outcome === 'confirmed') notify(h.ownerId, { kind: 'flag', title: 'A student payment was checked', text: note.trim(), to: '/o/money' });
   notify(f.reportedBy, { kind: 'flag', title: 'We looked into your report', text: `${OUTCOME_LABEL[outcome]}. Thank you for telling us.`, to: '/s/explore' });
-  audit('Resolved report', h.name, `${OUTCOME_LABEL[outcome]}: ${f.note}`); commit();
+  audit('Resolved report', h.name, `${OUTCOME_LABEL[outcome]}: ${f.note}`); await commit();
 }
 /** The admin activity log, newest first. */
 export async function listAudit() {
@@ -959,7 +1055,7 @@ export async function saveUniversity(u: University, isNew: boolean) {
   if (isNew) { if (db.universities.some(x => x.id === clean.id)) clean.id = clean.id + Math.floor(Math.random() * 90); db.universities.push(clean); }
   else Object.assign(db.universities.find(x => x.id === u.id)!, clean);
   db.hostels.filter(h => h.uni === clean.id).forEach(syncDistance);
-  audit(isNew ? 'Added university' : 'Updated university', clean.name, `Email domain set to ${domain}`); commit();
+  audit(isNew ? 'Added university' : 'Updated university', clean.name, `Email domain set to ${domain}`); await commit();
 }
 export type { AuditEntry };
 

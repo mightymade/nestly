@@ -5,7 +5,8 @@ import { PasswordStrength, passwordOk } from '../../components/PasswordStrength'
 import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
 import type { Mail as MailT } from '../../data/types';
-import { allUniversities, ApiError, confirmEmail, emailMatchesUniversity, inbox, resendVerification, signupStudent, universityById } from '../../services/api';
+import { live } from '../../services/supabase';
+import { resendConfirmation, allUniversities, ApiError, confirmEmail, emailMatchesUniversity, inbox, resendVerification, signupStudent, universityById } from '../../services/api';
 import { useUser } from '../../services/session';
 import { AuthLayout } from './AuthLayout';
 import { Steps } from '../../components/Steps';
@@ -16,14 +17,14 @@ export function Signup() {
   const me = useUser();
   // A signed-in student who has not confirmed yet lands straight on the inbox step.
   const [step, setStep] = useState(me && !me.emailVerified ? 3 : 1);
-  const [uni, setUni] = useState(me?.universityId ?? '');
+  const [uni, setUni] = useState(me?.universityId ?? ''); const [sentTo, setSentTo] = useState('');
   const titles = ['Where do you study?', 'Create your account', 'Check your student inbox'];
   const subs = ['We show hostels near it first. You can look at other campuses later.', 'Use your student email so we know you study there.', ''];
   return <AuthLayout title={titles[step - 1]!} sub={subs[step - 1] || undefined} back={step === 1 ? '/welcome' : undefined} onBack={step === 2 ? () => setStep(1) : undefined} wide={step === 2}>
     <Steps steps={['University', 'Your details', 'Confirm email']} at={step} />
     {step === 1 && <PickUniversity value={uni} onChange={setUni} onNext={() => setStep(2)} />}
-    {step === 2 && <Details uniId={uni} onBack={() => setStep(1)} onDone={() => setStep(3)} />}
-    {step === 3 && <Verify />}
+    {step === 2 && <Details uniId={uni} onBack={() => setStep(1)} onDone={email => { setSentTo(email); setStep(3); }} />}
+    {step === 3 && (live ? <CheckEmail email={sentTo || me?.email || ''} onRestart={() => setStep(2)} /> : <Verify />)}
   </AuthLayout>;
 }
 
@@ -45,7 +46,7 @@ function PickUniversity({ value, onChange, onNext }: { value: string; onChange: 
   </div>;
 }
 
-function Details({ uniId, onBack, onDone }: { uniId: string; onBack: () => void; onDone: () => void }) {
+function Details({ uniId, onBack, onDone }: { uniId: string; onBack: () => void; onDone: (email: string) => void }) {
   const uni = universityById(uniId)!;
   const [f, setF] = useState({ name: '', email: '', password: '', agree: false });
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -63,7 +64,7 @@ function Details({ uniId, onBack, onDone }: { uniId: string; onBack: () => void;
     e.preventDefault(); setTouched({ name: true, email: true, password: true, agree: true });
     if (Object.values(errs).some(Boolean)) return;
     setBusy(true);
-    try { await signupStudent({ uniId, ...f }); onDone(); }
+    try { await signupStudent({ uniId, ...f }); onDone(f.email.trim().toLowerCase()); }
     catch (x) { const a = x as ApiError; setServerErr({ field: a.field, msg: a.message }); }
     finally { setBusy(false); }
   }
@@ -82,6 +83,22 @@ function Details({ uniId, onBack, onDone }: { uniId: string; onBack: () => void;
       <span>I agree to the Nestly terms and privacy policy.{show('agree') && <b className="sr-only"> {show('agree')}</b>}</span></label>
     <Btn type="submit" block loading={busy}>Create account</Btn>
   </form>;
+}
+
+/** Live mode: the confirmation email is real, so this just says where it went and lets them ask again. */
+export function CheckEmail({ email, onRestart, back = '/s/explore' }: { email: string; onRestart: () => void; back?: string }) {
+  const toast = useToast(); const nav = useNavigate();
+  const [cool, setCool] = useState(45); const [busy, setBusy] = useState(false);
+  useEffect(() => { if (cool <= 0) return; const t = setTimeout(() => setCool(c => c - 1), 1000); return () => clearTimeout(t); }, [cool]);
+  async function resend() { setBusy(true); try { await resendConfirmation(email, back); setCool(60); toast('Sent again. Check your inbox and spam folder.'); } catch (x) { toast((x as Error).message); } finally { setBusy(false); } }
+  return <div className="stack">
+    <div className="check-mail"><span className="icon-tile primary"><Mail size={20} /></span><p>We sent a link to <b>{email}</b>. Open it to confirm your email. You come back here signed in.</p></div>
+    <p className="small muted">Not there after a minute? Check spam or promotions.</p>
+    <div className="row between wrap" style={{ gap: 8 }}>
+      <Btn kind="secondary" size="sm" loading={busy} disabled={cool > 0} onClick={resend}><RefreshCw size={15} />{cool > 0 ? `Send again in ${cool}s` : 'Send again'}</Btn>
+      <button type="button" className="btn btn-text btn-sm" onClick={onRestart}>Wrong email? Change it</button></div>
+    {back === '/s/explore' && <button type="button" className="btn btn-text btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => nav(takeNext() ?? '/s/explore', { replace: true })}>Browse hostels while you wait<ArrowRight size={15} /></button>}
+  </div>;
 }
 
 function Verify() {

@@ -6,4 +6,6 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 export default defineConfig(({ mode }) => ({
   plugins: mode === 'single' ? [react(), viteSingleFile()] : [react()],
   build: mode === 'single' ? { outDir: 'dist-single' } : {},
+  // The shared single-file preview always runs on demo data.
+  define: mode === 'single' ? { 'import.meta.env.VITE_DATA': JSON.stringify('demo') } : {},
 }));

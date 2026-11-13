@@ -24,6 +24,7 @@ import { AdminUniversities } from './pages/admin/Universities';
 import { AdminUsers } from './pages/admin/Users';
 import { AdminSubscriptions } from './pages/admin/Subscriptions';
 import { VisitPage } from './pages/VisitPage';
+import { ResetPassword } from './pages/auth/ResetPassword';
 import { OwnerBookings } from './pages/owner/Bookings';
 import { HostelEditor } from './pages/owner/HostelEditor';
 import { OwnerHostels } from './pages/owner/Hostels';
@@ -40,7 +41,7 @@ import { MyHostel } from './pages/student/MyHostel';
 import { Saved } from './pages/student/Saved';
 import { SessionProvider, useUser } from './services/session';
 
-const home = (u: Pick<User, 'role' | 'ownerStatus'>) => u.role === 'student' ? '/s/explore' : u.role === 'custodian' ? '/c/today'
+export const home = (u: Pick<User, 'role' | 'ownerStatus'>) => u.role === 'student' ? '/s/explore' : u.role === 'custodian' ? '/c/today'
   : u.role === 'admin' ? '/a/overview' : u.ownerStatus === 'incomplete' ? '/owner/signup' : '/o/overview';
 
 function Guard({ role }: { role: Role }) {
@@ -78,7 +79,7 @@ function AppRoutes() {
   useIsPhone(); // keeps the body class in sync
   return <Routes>
     <Route path="/" element={<Root />} />
-    <Route path="/visit/:hid" element={<VisitPage />} />
+    <Route path="/visit/:hid" element={<VisitPage />} /><Route path="/reset-password" element={<ResetPassword />} />
     <Route element={<GuestOnly />}><Route path="/welcome" element={<Welcome />} /><Route path="/login" element={<Login />} /><Route path="/invite" element={<Invite />} /></Route>
     <Route path="/signup" element={<SignupRoute />} />
     <Route path="/s" element={<StudentGate />}><Route element={<AppShell role="student" />}>

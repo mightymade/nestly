@@ -1530,3 +1530,11 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 .demo-acc b { font-size: 12.5px; line-height: 16px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .demo-acc span span, .demo-acc .min0 > span { font-size: 11.5px; line-height: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .demo-acc.reset { color: var(--muted) }
+
+/* First load in live mode */
+.boot { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--bg); color: var(--text) }
+.boot b { font-size: 18px; color: var(--ink) }
+.boot-dot { width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--primary); animation: boot-spin .8s linear infinite }
+@keyframes boot-spin { to { transform: rotate(360deg) } }
+.check-mail { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--primary-soft); color: var(--text) }
+.check-mail p { margin: 0 }

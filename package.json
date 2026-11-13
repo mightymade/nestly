@@ -11,6 +11,7 @@
     "build:single": "vite build --mode single"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@types/leaflet": "^1.9.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.441.0",

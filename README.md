@@ -4,6 +4,15 @@ A student hostel booking platform for Uganda Christian University and other Ugan
 
 This repository is the **front end**. Every screen works, but the data lives in the browser (localStorage), so the UI could be finished before the backend. The backend team replaces the fake data with real calls, one function at a time. See "For the backend team" below.
 
+## Real data or demo data
+
+Nestly runs in one of two modes, chosen by the `.env` file:
+
+- **Real data (Supabase):** `.env` holds `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Accounts, emails and data are real. To set up a Supabase project, follow `supabase/SETUP.md`.
+- **Demo data:** no `.env`, or `VITE_DATA=demo`. Everything lives in the browser with sample accounts. The shared preview (`npm run build:single`) always uses demo data.
+
+Copy `.env.example` to `.env` to start.
+
 ## Run it
 
 You need Node.js 18 or newer.
@@ -60,7 +69,9 @@ src/
   components/        shared UI: tables, dialogs, filters, maps, money input, toasts
   services/
     api.ts           THE ONLY place screens get or change data
-    db.ts            the fake database in localStorage
+    db.ts            the in-memory data: demo data in localStorage, or live data from Supabase
+    remote.ts        live mode: loads what each person may see from Supabase and saves their changes back
+    supabase.ts      the Supabase client and the switch between real and demo data
     session.tsx      who is logged in
     useData.ts       loads data and reloads after a change
   data/
@@ -69,6 +80,10 @@ src/
     catalog.ts       fixed lists: universities, amenities, what each role can do
   lib/               small helpers: formatting, maps, theme, CSV, QR art
   styles/            plain CSS: tokens (colours, spacing), base, layout, components
+supabase/
+  migrations/        the database: tables, security rules, storage, starting data (run in order)
+  functions/         server functions that run on Supabase (custodian invites, payments)
+  SETUP.md           step-by-step setup in the Supabase dashboard
 ```
 
 ## Rules for anyone changing the UI

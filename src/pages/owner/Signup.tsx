@@ -5,6 +5,8 @@ import { PasswordStrength, passwordOk } from '../../components/PasswordStrength'
 import { Segmented } from '../../components/Segmented';
 import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
+import { live } from '../../services/supabase';
+import { CheckEmail } from '../auth/Signup';
 import { ApiError, docsOf, savePayout, signupOwner, submitOwner, subConfig, uploadDoc } from '../../services/api';
 import { ugx } from '../../lib/format';
 import { useUser } from '../../services/session';
@@ -38,7 +40,7 @@ export function OwnerSignup() {
 function AccountStep({ onDone }: { onDone: () => void }) {
   const [f, setF] = useState({ name: '', phone: '', email: '', password: '' });
   const [code, setCode] = useState<string | null>(null); const [typed, setTyped] = useState('');
-  const [err, setErr] = useState<Record<string, string | null>>({}); const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<Record<string, string | null>>({}); const [busy, setBusy] = useState(false); const [sent, setSent] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => { setF({ ...f, [k]: e.target.value }); setErr({ ...err, [k]: null }); };
   function check() {
     const x = { name: f.name.trim().split(/\s+/).length < 2 ? 'Enter your first and last name.' : null,
@@ -49,11 +51,18 @@ function AccountStep({ onDone }: { onDone: () => void }) {
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (live) {
+      // The real version confirms the owner's email instead of texting a code.
+      if (!check()) return; setBusy(true);
+      try { await signupOwner(f); setSent(true); } catch (x) { const a = x as ApiError; setErr({ [a.field ?? 'email']: a.message }); } finally { setBusy(false); }
+      return;
+    }
     if (!code) { if (check()) setCode(String(100000 + Math.floor(Math.random() * 899999))); return; }
     if (typed.replace(/\s/g, '') !== code) return setErr({ code: 'That code is not right. Check the SMS and try again.' });
     setBusy(true);
     try { await signupOwner(f); onDone(); } catch (x) { const a = x as ApiError; setErr({ [a.field ?? 'code']: a.message }); setCode(null); } finally { setBusy(false); }
   }
+  if (sent) return <CheckEmail email={f.email.trim().toLowerCase()} back="/owner/signup" onRestart={() => setSent(false)} />;
   return <form className="stack" onSubmit={submit} noValidate>
     {!code ? <>
       <div className="f2">
@@ -63,7 +72,7 @@ function AccountStep({ onDone }: { onDone: () => void }) {
         <Field id="ow-pw" label="Password" error={err.password}><PasswordInput id="ow-pw" autoComplete="new-password" value={f.password} onChange={set('password')} error={err.password} /></Field>
         {!err.password && <div className="span"><PasswordStrength value={f.password} /></div>}
       </div>
-      <Btn type="submit" block>Text me a code<ArrowRight size={18} /></Btn>
+      <Btn type="submit" block loading={busy}>{live ? 'Create account' : 'Text me a code'}<ArrowRight size={18} /></Btn>
     </> : <>
       <div className="row"><span className="icon-tile primary"><Smartphone size={20} /></span><p>We sent a 6-digit code to <b>{f.phone}</b>.</p></div>
       <div className="banner primary small"><span>Demo code: <b className="num">{code}</b></span></div>

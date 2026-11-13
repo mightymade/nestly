@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
 import { ApiError, login, requestPasswordReset } from '../../services/api';
 import { resetDemo } from '../../services/api';
+import { live } from '../../services/supabase';
 import { AuthLayout } from './AuthLayout';
 import { takeNext } from '../../components/AccountGate';
 
@@ -33,7 +34,7 @@ export function Login() {
       <Btn type="submit" block loading={busy}><LogIn size={18} />Log in</Btn>
       <p className="small muted login-alt">New here? <Link to="/signup">Create a student account</Link><span aria-hidden="true">·</span><Link to="/owner/signup">List a hostel</Link></p>
     </form>
-    <div className="demo-box stack-sm">
+    {!live && <div className="demo-box stack-sm">
       <button className="row between w-full" onClick={() => setDemo(d => !d)} aria-expanded={demo}><span className="label">Try a demo account</span><span className="dd-pill on-surface" style={{ pointerEvents: 'none' }}>Choose<span className="chev"><ChevronDown size={15} /></span></span></button>
       {demo && <div className="demo-grid">
         {([['Student', 'sarah.atim@ucu.ac.ug', GraduationCap], ['Custodian', 'peter.k', KeyRound], ['Hostel owner', 'grace.n', Building2], ['Owner in review', 'daniel.o', Building2], ['Nestly admin', 'admin', ShieldCheck]] as const).map(([role, id, I]) =>
@@ -41,7 +42,7 @@ export function Login() {
         <button type="button" className="demo-acc reset" onClick={() => { resetDemo(); toast('Demo data reset'); }}><RotateCcw size={15} /><span className="min0"><b>Reset demo</b><span>Start again</span></span></button>
       </div>}
       <p className="tiny muted">Demo password: nestly123</p>
-    </div>
+    </div>}
     {forgot && <ForgotPassword onClose={() => setForgot(false)} />}
   </AuthLayout>;
 }
