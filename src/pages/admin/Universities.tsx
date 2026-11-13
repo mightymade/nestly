@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast';
 import { BackBar, Btn, Field, Skeleton, TextInput } from '../../components/ui';
 import type { University } from '../../data/types';
 import { useIsPhone } from '../../lib/useIsPhone';
+import { addDays, ymd } from '../../lib/format';
 import { uniHostelCounts, ApiError, listUniversities, saveUniversity, semDates, semName } from '../../services/api';
 import { PickMap } from '../../components/maps';
 import { readLogo, UniLogo } from '../../components/UniLogo';
@@ -16,12 +17,11 @@ import { placeName, type LatLng } from '../../lib/geo';
 const hostelsNear = (uid: string) => uniHostelCounts(uid).live;
 /** Live hostels that use the university calendar because they have no dates of their own. */
 const following = (uid: string) => uniHostelCounts(uid).following;
-const addDays = (d: string, n: number) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
 const KAMPALA: LatLng = { lat: 0.3476, lng: 32.5825 };
 import { useData } from '../../services/useData';
 
 export function AdminUniversities() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymd();
   const phone = useIsPhone();
   const { data, loading, error, reload } = useData(() => listUniversities(), []);
   const [edit, setEdit] = useState<University | 'new' | null>(null);
@@ -59,7 +59,7 @@ function UniDialog({ u, onClose }: { u: University | null; onClose: () => void }
   const moved = !!u && pin && (Math.abs(u.lat - f.lat) > 1e-6 || Math.abs(u.lng - f.lng) > 1e-6);
   const n = u ? hostelsNear(u.id) : 0;
   const setSem = (i: number, p: Partial<{ start: string; end: string }>) => { setF(v => ({ ...v, sems: v.sems!.map((x, j) => (j === i ? { ...x, ...p } : x)) })); setErr(e => ({ ...e, sems: null })); };
-  const addSem = () => setF(v => { const l = v.sems ?? []; const last = l[l.length - 1]; const st = last?.end ? addDays(last.end, 56) : addDays(new Date().toISOString().slice(0, 10), 60); return { ...v, sems: [...l, { start: st, end: addDays(st, 18 * 7) }] }; });
+  const addSem = () => setF(v => { const l = v.sems ?? []; const last = l[l.length - 1]; const st = last?.end ? addDays(last.end, 56) : addDays(ymd(), 60); return { ...v, sems: [...l, { start: st, end: addDays(st, 18 * 7) }] }; });
   async function place(p: LatLng) {
     setF(x => ({ ...x, lat: p.lat, lng: p.lng })); setErr(e => ({ ...e, location: null }));
     if (!f.area.trim()) { const a = await placeName(p); if (a) setF(x => (x.area.trim() ? x : { ...x, area: a.split(', ').pop() ?? a })); }

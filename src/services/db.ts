@@ -7,10 +7,10 @@
 import { seed } from '../data/seed';
 import type { DB } from '../data/types';
 import { storage } from '../lib/storage';
-import { load, push, resetRemote } from './remote';
+import { load, push, rebase, resetRemote } from './remote';
 import { live } from './supabase';
 
-const KEY = 'nestly.db.v14';
+const KEY = 'nestly.db.v15';
 /** An empty database, the starting point before live data loads. */
 export const emptyDb = (): DB => ({
   users: [], bookings: [], saved: {}, reviews: [], visitors: [], tenants: [], rooms: [], notices: [], invites: [], mail: [],
@@ -29,7 +29,7 @@ export const getDb = () => db;
 export async function commit() {
   if (!live) { storage.set(KEY, db); tell(); return; }
   tell();
-  try { await push(db); }
+  try { await push(db); tell(); }
   catch (e) { await reload().catch(() => undefined); throw e; }
 }
 export function subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; }
@@ -42,7 +42,7 @@ export function resetDemo() { if (live) return; db = seed(); afterLoad?.(); void
 /** Live mode: reads everything this person may see from Supabase and refreshes every screen. */
 export async function reload() {
   if (!live) return;
-  db = await load(emptyDb); afterLoad?.(); tell();
+  db = await load(emptyDb); afterLoad?.(); rebase(db); tell();
 }
 /** Live mode: clears the data when someone signs out, then loads what guests can see. */
 export async function clearAndReload() { resetRemote(); db = emptyDb(); tell(); await reload(); }

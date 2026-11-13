@@ -4,7 +4,7 @@
  * Swap the bodies for Supabase calls later; keep the names and return shapes.
  */
 import type { Invite, Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
-import { nowTime, sleep } from '../lib/format';
+import { addDays, nowTime, sleep, ymd } from '../lib/format';
 import { storage } from '../lib/storage';
 import { clearAndReload, commit, getDb, onFreshData, reload } from './db';
 import { authUid, friendly } from './remote';
@@ -15,7 +15,7 @@ const SESSION = 'nestly.session';
 const wait = (ms = 450) => sleep(ms);
 const id = (p: string) => p + Math.random().toString(36).slice(2, 8);
 const isoNow = () => new Date().toISOString();
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => ymd();
 /** The semester students are asked to book again for on the Bookings page. */
 export const NEXT_SEM = 'Jan to May 2027';
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -37,9 +37,10 @@ export const hostelSems = (h: Hostel) => (h.sems?.length ? h.sems : uniSems(h.un
 /** Bookings already made for one semester at a hostel. */
 export const semBookings = (hid: string, s: Semester) => getDb().bookings.filter(b => b.hostelId === hid && b.sem === semName(s) && b.status !== 'cancelled').length;
 /** The semester students can book at this hostel now: the first open one that has not ended. */
-export const bookingSem = (h: Hostel) => { const today = new Date().toISOString().slice(0, 10); return hostelSems(h).find(s => s.open && s.end >= today) ?? null; };
+export const bookingSem = (h: Hostel) => { const today = ymd(); return hostelSems(h).find(s => s.open && s.end >= today) ?? null; };
 
 import { ApiError } from './errors';
+import { removeHostelPhotos, uploadHostelPhotos } from './files';
 export { ApiError };
 
 const safe = (u: User): User => ({ ...u, password: '' });
@@ -167,7 +168,7 @@ export async function inbox(email: string) { await wait(250); return getDb().mai
 export async function confirmEmail(token: string) {
   await wait(600); const db = getDb();
   const m = db.mail.find(x => x.token === token); if (!m) throw new ApiError('This link has expired. Ask for a new one.');
-  const u = db.users.find(x => x.email === m.to)!; u.emailVerified = true; u.verifiedUntil = '31 Aug 2027';
+  const u = db.users.find(x => x.email === m.to)!; u.emailVerified = true; u.verifiedUntil = addDays(ymd(), 365);
   db.mail = db.mail.filter(x => x.id !== m.id); await commit(); return safe(u);
 }
 
@@ -463,7 +464,11 @@ function audit(action: string, target: string, detail = '') {
   const me = sessionUser(); if (!me) return;
   getDb().audit.unshift({ id: id('a'), at: isoNow(), actorId: me.id, actorRole: me.role, action, target, detail });
 }
-const adminIds = () => getDb().users.filter(u => u.role === 'admin').map(u => u.id);
+/** Admins to notify. With real data the database tells the admins itself (see 0005_stage2.sql), so this is empty. */
+/** Live mode: loads the latest data first, so a decision is made on what is really there now (an owner may have just changed the listing). */
+const fresh = () => (live ? reload() : Promise.resolve());
+/** Admins to notify. */
+const adminIds = () => live ? [] : getDb().users.filter(u => u.role === 'admin').map(u => u.id);
 
 /** Every room of a hostel with its beds, plus students waiting for a room. */
 export async function listRoomsWithOccupancy(hostelId: string) {
@@ -708,13 +713,17 @@ export async function createHostelDraft(ownerId: string) {
 const REVIEW_FIELDS = ['name', 'photos', 'location', 'km', 'dir'];
 /** Saves an owner's changes. Changing what students judge a listing by on a live hostel sends it back to review. */
 export async function saveHostelDraft(hid: string, patch: Partial<Hostel>) {
-  await wait(500); const h = hostelById(hid)!;
+  await wait(500); await fresh(); const h = hostelById(hid)!;
+  const oldPhotos = h.photos ?? [];
+  if (live && patch.photos) patch = { ...patch, photos: await uploadHostelPhotos(hid, patch.photos) };
   const touchesReview = h.status === 'live' && Object.keys(patch).some(k => REVIEW_FIELDS.includes(k) && JSON.stringify((patch as Record<string, unknown>)[k]) !== JSON.stringify((h as unknown as Record<string, unknown>)[k]));
   Object.assign(h, patch);
   if (patch.location || patch.uni) syncDistance(h);
   if (patch.photos) h.photoUrl = patch.photos[0];
   if (touchesReview) { h.status = 'in_review'; h.submittedAt = isoNow(); adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing changed', text: `${h.name} changed its name, photos or location.`, to: '/a/reviews' })); }
-  await commit(); return { hostel: h, sentToReview: touchesReview };
+  await commit();
+  if (live && patch.photos) await removeHostelPhotos(oldPhotos, h.photos ?? []);
+  return { hostel: h, sentToReview: touchesReview };
 }
 /** Saves the room types and prices of a hostel. */
 export async function updateRoomTypes(hid: string, types: RoomType[]) {
@@ -759,7 +768,7 @@ export function hostelChecklist(h: Hostel, roomCount: number, hasProof: boolean)
 }
 /** Sends a hostel to the Nestly team. Throws ApiError if a section is missing. */
 export async function submitHostelForReview(hid: string) {
-  await wait(600); const db = getDb(); const h = hostelById(hid)!;
+  await wait(600); await fresh(); const db = getDb(); const h = hostelById(hid)!;
   const list = hostelChecklist(h, db.rooms.filter(r => r.hostelId === hid).length, db.docs.some(d => d.hostelId === hid));
   if (list.some(c => !c.done)) throw new ApiError('Finish every section first.');
   h.status = 'in_review'; h.submittedAt = isoNow(); h.reviewNote = undefined;
@@ -915,7 +924,7 @@ export async function listReviewQueue() {
 }
 /** Approves an owner after checking their ID and payment account. */
 export async function approveOwner(ownerId: string) {
-  await wait(500); const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
+  await wait(500); await fresh(); const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
   u.ownerStatus = 'approved'; u.ownerNote = undefined;
   db.docs.filter(d => d.ownerId === ownerId && !d.hostelId).forEach(d => { d.status = 'accepted'; });
   db.hostels.filter(h => h.ownerId === ownerId).forEach(h => { h.verified = true; });
@@ -924,7 +933,7 @@ export async function approveOwner(ownerId: string) {
 }
 /** Rejects an owner with a reason they can read. */
 export async function rejectOwner(ownerId: string, reason: string) {
-  await wait(500); if (!reason.trim()) throw new ApiError('Give a reason so the owner knows what to fix.', 'reason');
+  await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason so the owner knows what to fix.', 'reason');
   const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
   u.ownerStatus = 'rejected'; u.ownerNote = reason.trim();
   db.docs.filter(d => d.ownerId === ownerId && !d.hostelId).forEach(d => { d.status = 'rejected'; d.note = reason.trim(); });
@@ -933,7 +942,7 @@ export async function rejectOwner(ownerId: string, reason: string) {
 }
 /** Publishes a listing on Explore. */
 export async function approveListing(hid: string) {
-  await wait(500); const db = getDb(); const h = hostelById(hid)!; const owner = db.users.find(u => u.id === h.ownerId);
+  await wait(500); await fresh(); const db = getDb(); const h = hostelById(hid)!; const owner = db.users.find(u => u.id === h.ownerId);
   if (owner?.ownerStatus !== 'approved') throw new ApiError(`Approve ${owner?.name ?? 'the owner'} first. Listings go live only for checked owners.`);
   h.status = 'live'; h.verified = true; h.reviewNote = undefined; h.reviewSections = undefined; h.listedAt = h.listedAt ?? isoNow();
   db.docs.filter(d => d.hostelId === hid).forEach(d => { d.status = 'accepted'; });
@@ -942,21 +951,21 @@ export async function approveListing(hid: string) {
 }
 /** Sends a listing back to the owner with a note and the sections to fix. */
 export async function requestChanges(hid: string, note: string, sections: string[] = []) {
-  await wait(500); if (!note.trim()) throw new ApiError('Tell the owner what to change.', 'note');
+  await wait(500); await fresh(); if (!note.trim()) throw new ApiError('Tell the owner what to change.', 'note');
   const h = hostelById(hid)!; h.status = 'changes_requested'; h.reviewNote = note.trim(); h.reviewSections = sections.length ? sections : undefined;
   notify(h.ownerId, { kind: 'review', title: `Changes requested for ${h.name}`, text: note.trim(), to: `/o/hostels/${hid}` });
   audit('Requested changes', h.name, note.trim()); await commit();
 }
 /** Pauses a hostel: it leaves Explore and the owner sees the reason. Bookings stay valid. */
 export async function suspendHostel(hid: string, reason: string) {
-  await wait(500); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
+  await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
   const h = hostelById(hid)!; h.status = 'suspended'; h.pausedFor = 'admin'; h.suspendReason = reason.trim();
   notify(h.ownerId, { kind: 'review', title: `${h.name} is paused`, text: `${reason.trim()} Existing bookings stay valid.`, to: '/o/hostels' });
   audit('Paused hostel', h.name, reason.trim()); await commit();
 }
 /** Puts a paused hostel back on Explore. */
 export async function restoreHostel(hid: string) {
-  await wait(400); const h = hostelById(hid)!; h.status = 'live'; h.pausedFor = undefined; h.suspendReason = undefined;
+  await wait(400); await fresh(); const h = hostelById(hid)!; h.status = 'live'; h.pausedFor = undefined; h.suspendReason = undefined;
   notify(h.ownerId, { kind: 'review', title: `${h.name} is live again`, text: 'Students can find it on Nestly again.', to: '/o/hostels' });
   audit('Restored hostel', h.name, 'Back on Explore'); await commit();
 }
@@ -991,13 +1000,13 @@ export async function listUsers() {
 }
 /** Pauses an account with a reason, so the person cannot log in. */
 export async function suspendUser(userId: string, reason: string) {
-  await wait(500); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
+  await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
   const u = getDb().users.find(x => x.id === userId)!; u.suspended = true; u.suspendReason = reason.trim();
   audit('Paused account', u.name, reason.trim()); await commit();
 }
 /** Lets a paused account log in again. */
 export async function restoreUser(userId: string) {
-  await wait(400); const u = getDb().users.find(x => x.id === userId)!; u.suspended = false; u.suspendReason = undefined;
+  await wait(400); await fresh(); const u = getDb().users.find(x => x.id === userId)!; u.suspended = false; u.suspendReason = undefined;
   audit('Restored account', u.name, ''); await commit();
 }
 /** Admin sends someone a password reset link. */
@@ -1025,7 +1034,7 @@ export async function listFlags() {
 export const OUTCOME_LABEL: Record<FlagOutcome, string> = { dismissed: 'No action needed', warned: 'Owner warned', hidden: 'Review hidden', paused: 'Hostel paused', confirmed: 'Owner confirmed payment' };
 /** Closes a report and does what the admin chose: warn the owner, hide a review or pause the hostel. */
 export async function resolveFlag(fid: string, outcome: FlagOutcome, note: string) {
-  await wait(450); const db = getDb(); const f = db.flags.find(x => x.id === fid)!; const h = hostelById(f.hostelId)!;
+  await wait(450); await fresh(); const db = getDb(); const f = db.flags.find(x => x.id === fid)!; const h = hostelById(f.hostelId)!;
   if (!note.trim()) throw new ApiError('Write a short note about what you found.', 'note');
   f.status = 'resolved'; f.outcome = outcome; f.note = note.trim(); f.resolvedAt = isoNow();
   if (outcome === 'hidden' && f.reviewId) { const r = db.reviews.find(x => x.id === f.reviewId); if (r) r.hidden = true; }

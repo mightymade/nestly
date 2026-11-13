@@ -1,5 +1,5 @@
 import { CalendarDays, AlertTriangle, ArrowRight, Check, ChevronLeft, ChevronRight, Circle, FileCheck2, Home, ImagePlus, Info, ListChecks, MapPin, Pencil, Plus, Send, Sparkles, Star, Trash2, X, type LucideIcon } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PickMap } from '../../components/maps';
 import { MoneyInput } from '../../components/MoneyInput';
@@ -15,7 +15,7 @@ import { AMENITIES } from '../../data/catalog';
 import type { Hostel, Room, RoomType, Semester, VerificationDoc } from '../../data/types';
 import { fitImage } from '../../lib/art';
 import { bearing, compass, distanceKm, kmLabel, placeName, type LatLng } from '../../lib/geo';
-import { ugx } from '../../lib/format';
+import { addDays, ugx, ymd } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { bookingSem, hostelSems, semBookings, semDates, semName, allUniversities, ApiError, deleteRoom, generateRooms, getOwnerHostel, hostelChecklist, hostelPoint, saveHostelDraft, submitHostelForReview, universityById, updateRoom, updateRoomTypes, uploadDoc , uniSems } from '../../services/api';
 import { useData } from '../../services/useData';
@@ -196,6 +196,9 @@ function Photos({ h }: Ctx) {
   const input = useRef<HTMLInputElement>(null);
   const { save, busy, dialog } = useSave(h);
   const dirty = JSON.stringify(list) !== JSON.stringify(init);
+  // After a save the photos come back as web addresses (live data), so show what was saved.
+  const saved = JSON.stringify(init);
+  useEffect(() => { setList(JSON.parse(saved) as string[]); }, [saved]);
   async function add(files: FileList | null) {
     if (!files) return; setErr(null);
     const room = 10 - list.length; const pick = Array.from(files).slice(0, room);
@@ -316,7 +319,6 @@ function EditRoom({ r, types, onClose }: { r: Room; types: RoomType[]; onClose: 
     </div></Overlay>;
 }
 
-const addDays = (d: string, n: number) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
 /** When students move in and out, and which semester takes bookings. Not a review field: saves straight away. */
 function Sems({ h }: Ctx) {
   const uni = universityById(h.uni);
@@ -325,7 +327,7 @@ function Sems({ h }: Ctx) {
   const { save, busy, dialog } = useSave(h);
   const dirty = JSON.stringify(list) !== JSON.stringify(start);
   const upd = (i: number, p: Partial<Semester>) => { setList(l => l.map((s, j) => (j === i ? { ...s, ...p } : s))); setErr(null); };
-  const add = () => { const last = list[list.length - 1]; const st = last ? addDays(last.end, 56) : addDays(new Date().toISOString().slice(0, 10), 30); setList([...list, { start: st, end: addDays(st, 18 * 7), open: false }]); };
+  const add = () => { const last = list[list.length - 1]; const st = last ? addDays(last.end, 56) : addDays(ymd(), 30); setList([...list, { start: st, end: addDays(st, 18 * 7), open: false }]); };
   function go() {
     const s = list.slice().sort((a, b) => a.start.localeCompare(b.start));
     for (const [i, x] of s.entries()) {
@@ -337,7 +339,7 @@ function Sems({ h }: Ctx) {
     if (new Set(s.map(semName)).size !== s.length) return setErr('Two semesters have the same months. Remove one.');
     save({ sems: s }, false); setList(s);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymd();
   return <Sec title="Semester dates" sub="When students move in and out. Students book one semester at a time, and only semesters you open take bookings." dirty={dirty} busy={busy} onSave={go} onReset={() => { setList(start); setErr(null); }}>
     {!h.sems?.length && <div className="banner primary small"><Info size={16} className="ic" /><span className="grow">{uniSems(h.uni) ? `These are ${uni?.short ?? 'the university'}'s dates, set by Nestly.` : 'These are sample dates. Your university has not set its calendar yet.'} Change them if your move-in days are different, then save.</span>
       <Btn size="sm" kind="secondary" onClick={() => save({ sems: list }, false)}>Use these dates</Btn></div>}

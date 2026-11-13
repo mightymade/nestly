@@ -11,7 +11,7 @@ import { useToast } from '../../components/Toast';
 import { Art, Avatar, Btn, Skeleton } from '../../components/ui';
 import { AMENITIES } from '../../data/catalog';
 import type { VerificationDoc } from '../../data/types';
-import { timeAgo, ugx } from '../../lib/format';
+import { timeAgo, ugx, ymd } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { ApiError, approveListing, approveOwner, bookingSem, hostelSems, listReviewQueue, minPrice, rejectOwner, requestChanges, semDates, semName, uniSems, universityById } from '../../services/api';
 import { useData } from '../../services/useData';
@@ -135,7 +135,7 @@ function ListingReview({ l, onDone }: { l: ListingItem; onDone: () => void }) {
     </div>
     <h3 className="rv-h">Semester dates</h3>
     <div className="review-list">{sems.map(x => <div key={x.start} className="review-row"><div className="min0"><b className="small ink">{semName(x)}</b><span className="tiny muted">{semDates(x)}</span></div>
-      {x.end < new Date().toISOString().slice(0, 10) ? <Pill tone="neutral">Ended</Pill> : x.open ? <Pill tone="success">Taking bookings</Pill> : <Pill tone="neutral">Closed</Pill>}</div>)}</div>
+      {x.end < ymd() ? <Pill tone="neutral">Ended</Pill> : x.open ? <Pill tone="success">Taking bookings</Pill> : <Pill tone="neutral">Closed</Pill>}</div>)}</div>
     <p className="tiny muted">{h.sems?.length ? 'The owner set these dates.' : uniSems(h.uni) ? `${uni.short}'s calendar. The owner has not set their own.` : `Sample dates. ${uni.short} has no calendar yet; add one under Universities.`}</p>
     <h3 className="rv-h">Map pin</h3>
     <div className="rv-map"><CampusMap uni={uni} hostels={[h]} active={null} setActive={() => {}} hover={null} setHover={() => {}} badge={false} /></div>

@@ -12,6 +12,7 @@
  * sending writes that would be refused anyway.
  */
 import type { Config, DB, User } from '../data/types';
+import { ymd } from '../lib/format';
 import { ApiError } from './errors';
 import { sb } from './supabase';
 
@@ -54,7 +55,7 @@ function toRow(t: string, o: Record<string, unknown>): Row {
 /** Table row to app object: camelCase names, nulls dropped so optional fields stay optional. */
 function fromRow<T = never>(r: Row): T {
   const o: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(r)) if (v !== null) o[camel(k)] = v;
+  for (const [k, v] of Object.entries(r)) if (v !== null && k !== 'seq') o[camel(k)] = v;
   return o as T;
 }
 
@@ -144,12 +145,16 @@ export async function load(empty: () => DB): Promise<DB> {
     if (q) query = q(query) as typeof query;
     const { data, error } = await query; if (error) throw new RemoteError(friendly(error)); return (data ?? []) as Row[];
   };
-  const signed = !!authUid; const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const [unis, cfg, hostels, reviews] = await Promise.all([all('universities'), all('config'), all('hostels'), all('reviews')]);
+  const signed = !!authUid; const yesterday = ymd(new Date(Date.now() - 86400000));
+  // Lists keep the order rows were added in (the "seq" number), like the demo data.
+  // Reviews, notices, reports and saved hostels show the newest first.
+  const inOrder = (t: string) => all(t, q => q.order('seq'));
+  const newestFirst = (t: string) => all(t, q => q.order('seq', { ascending: false }));
+  const [unis, cfg, hostels, reviews] = await Promise.all([inOrder('universities'), all('config'), inOrder('hostels'), newestFirst('reviews')]);
   const [profiles, accounts, bookings, saved, rooms, tenants, visitors, notices, notes, invites, docs, flags, subs, audit] = signed
-    ? await Promise.all([all('profiles'), all('owner_accounts'), all('bookings'), all('saved'), all('rooms'), all('tenants'),
-        all('visitors', q => q.gte('date', yesterday)), all('notices'), all('notifications', q => q.order('at', { ascending: false }).limit(150)),
-        all('invites'), all('docs'), all('flags'), all('sub_payments', q => q.order('at', { ascending: false })), all('audit', q => q.order('at', { ascending: false }).limit(400))])
+    ? await Promise.all([inOrder('profiles'), all('owner_accounts'), inOrder('bookings'), newestFirst('saved'), inOrder('rooms'), inOrder('tenants'),
+        all('visitors', q => q.gte('date', yesterday).order('seq')), newestFirst('notices'), all('notifications', q => q.order('at', { ascending: false }).limit(150)),
+        inOrder('invites'), inOrder('docs'), newestFirst('flags'), all('sub_payments', q => q.order('at', { ascending: false })), all('audit', q => q.order('at', { ascending: false }).limit(400))])
     : Array.from({ length: 14 }, () => [] as Row[]);
   const db = empty();
   db.universities = unis.map(r => fromRow(r));
@@ -177,17 +182,22 @@ async function pushNow(db: DB) {
   if (!sb || !authUid) return;
   me = db.users.find(u => u.id === authUid) ?? me;
   const now = rowsOf(db); const c = sb;
-  const writes: { t: string; inserts: Row[]; updates: Row[]; deletes: Row[] }[] = [];
+  const writes: { t: string; inserts: Row[]; updates: Row[]; deletes: Row[]; full: Row[] }[] = [];
   for (const t of ORDER) {
     const before = snap.get(t) ?? new Map<string, string>(); const rows = now[t] ?? [];
-    const seen = new Set<string>(); const inserts: Row[] = []; const updates: Row[] = [];
+    const seen = new Set<string>(); const inserts: Row[] = []; const updates: Row[] = []; const full: Row[] = [];
     for (const r of rows) {
       const k = keyOf(t, r); seen.add(k); const old = before.get(k);
       if (old === undefined) { if (mayWrite(t, r, true)) inserts.push(r); }
-      else if (old !== JSON.stringify(r) && mayWrite(t, r, false)) updates.push(r);
+      else if (old !== JSON.stringify(r) && mayWrite(t, r, false)) {
+        // Send only the columns that changed (plus the key), so someone else's recent edit to other fields is not overwritten.
+        const was = JSON.parse(old) as Row; const patch: Row = {};
+        for (const c of Object.keys(r)) if (JSON.stringify(r[c]) !== JSON.stringify(was[c]) || (KEY[t] ?? ['id']).includes(c)) patch[c] = r[c];
+        updates.push(patch); full.push(r);
+      }
     }
     const deletes = [...before.entries()].filter(([k]) => !seen.has(k)).map(([, j]) => JSON.parse(j) as Row).filter(r => mayWrite(t, r, false));
-    if (inserts.length || updates.length || deletes.length) writes.push({ t, inserts, updates, deletes });
+    if (inserts.length || updates.length || deletes.length) writes.push({ t, inserts, updates, deletes, full });
   }
   if (!writes.length) return;
   const keys = (t: string) => KEY[t] ?? ['id'];
@@ -196,7 +206,8 @@ async function pushNow(db: DB) {
     const strip = (r: Row) => { const x = { ...r }; if (w.t === 'hostels') { delete x.views; delete x.saves; delete x.rating; delete x.n_rev; } return x; };
     if (w.inserts.length) { const { error } = await c.from(w.t).insert(w.inserts.map(strip)); if (error) throw new RemoteError(friendly(error)); }
     for (const r of w.updates) {
-      let q = c.from(w.t).update(strip(r)); for (const k of keys(w.t)) q = q.eq(k, r[k] as string);
+      const patch = strip(r); if (Object.keys(patch).every(k => keys(w.t).includes(k))) continue;
+      let q = c.from(w.t).update(patch); for (const k of keys(w.t)) q = q.eq(k, r[k] as string);
       const { error } = await q; if (error) throw new RemoteError(friendly(error));
     }
   }
@@ -204,8 +215,26 @@ async function pushNow(db: DB) {
     let q = c.from(w.t).delete(); for (const k of keys(w.t)) q = q.eq(k, r[k] as string);
     const { error } = await q; if (error) throw new RemoteError(friendly(error));
   }
+  // The server fills in some hostel fields itself (status of a new listing, booked counts, ratings).
+  // Read back every hostel these writes touched, so the screen shows what is really saved.
+  const touched = new Set<string>();
+  for (const w of writes) for (const r of [...w.inserts, ...w.full, ...w.deletes]) {
+    if (w.t === 'hostels') touched.add(String(r.id));
+    else if (['rooms', 'tenants', 'bookings', 'reviews'].includes(w.t) && r.hostel_id) touched.add(String(r.hostel_id));
+  }
+  if (touched.size) {
+    const { data } = await c.from('hostels').select('*').in('id', [...touched]);
+    for (const row of data ?? []) {
+      const h = db.hostels.find(x => x.id === row.id) as unknown as Record<string, unknown> | undefined; if (!h) continue;
+      const fresh = fromRow<Record<string, unknown>>(row);
+      for (const k of Object.keys(h)) if (!(k in fresh)) delete h[k];
+      Object.assign(h, fresh);
+    }
+  }
   takeSnapshot(db);
 }
+/** Treats the data as it is now as saved. Used after load, once the app has tidied it (distances, bed counts). */
+export function rebase(db: DB) { takeSnapshot(db); }
 
 /** Forgets snapshot state, used when signing out. */
 export function resetRemote() { authUid = null; me = null; snap = new Map(); ownerAccountIds = new Set(); }

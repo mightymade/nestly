@@ -15,8 +15,19 @@ Run the files in this order:
 2. `0002_security.sql`: who can see and change what
 3. `0003_storage.sql`: buckets for hostel photos and owner documents
 4. `0004_starting_data.sql`: the four universities and the subscription price
+5. `0005_stage2.sql`: fair room counts, lists in the right order, and messages to admins
 
 If one fails, stop and send the error message. Don't run the next file.
+
+If you already ran the first four, just run `0005_stage2.sql`. When a new numbered file appears in a later update, run only the new one.
+
+### Optional: sample data
+
+To see the site full of hostels, owners, students and bookings (the same as the demo), run `supabase/sample_data.sql` once after the migration files.
+
+- Every sample account's password is `nestly123`. Try `grace.n` (owner), `daniel.o` (owner waiting for approval), `peter.k` (custodian) and `sarah.atim@ucu.ac.ug` (student).
+- There is no sample admin. Use your own account (step 6).
+- Anyone who knows these logins can use them, so **run `supabase/remove_sample_data.sql` before real students use the site.** It removes only the sample hostels and accounts.
 
 ## 2. Tell Supabase where the app lives
 

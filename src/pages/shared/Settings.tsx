@@ -12,7 +12,7 @@ import { resizeImage } from '../../lib/art';
 import { getThemePref, setThemePref, type ThemePref } from '../../lib/theme';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { MoneyInput } from '../../components/MoneyInput';
-import { ugx } from '../../lib/format';
+import { dayLabel, ugx } from '../../lib/format';
 import { ownerHostelCounts, saveConfig, subConfig, ApiError, changePassword, docsOf, hostelById, logout, savePayout, universityById, updateProfile, usernameAvailable } from '../../services/api';
 import { Segmented } from '../../components/Segmented';
 import { useData } from '../../services/useData';
@@ -155,7 +155,7 @@ function ProfileSection() {
           : <Field id="pf-phone" label="Mobile money number" error={err.phone}><TextInput id="pf-phone" type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} error={err.phone} autoComplete="tel" /></Field>}
         {isCust
           ? <Field id="pf-email" label="Email" error={err.email} hint={f.email !== me.email ? 'We will send a link to confirm the new address.' : undefined}><TextInput id="pf-email" type="email" value={f.email} onChange={set('email')} error={err.email} autoComplete="email" /></Field>
-          : <Field id="pf-email" label="Student email" hint={me.emailVerified ? `Confirmed until ${me.verifiedUntil}` : undefined}>
+          : <Field id="pf-email" label="Student email" hint={me.emailVerified ? `Confirmed until ${dayLabel(me.verifiedUntil)}` : undefined}>
               <div className="input-wrap has-trail"><TextInput id="pf-email" value={me.email} readOnly /><span className="trail" style={{ color: me.emailVerified ? 'var(--success)' : 'var(--warn)', width: 36, display: 'grid', placeItems: 'center' }}>{me.emailVerified ? <Check size={18} /> : <X size={18} />}</span></div>
               {!me.emailVerified && <Link to="/signup" className="btn btn-primary btn-sm" style={{ width: 'fit-content' }}>Confirm my email</Link>}</Field>}
         {isCust

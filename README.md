@@ -71,6 +71,7 @@ src/
     api.ts           THE ONLY place screens get or change data
     db.ts            the in-memory data: demo data in localStorage, or live data from Supabase
     remote.ts        live mode: loads what each person may see from Supabase and saves their changes back
+    files.ts         live mode: uploads hostel photos to Supabase storage
     supabase.ts      the Supabase client and the switch between real and demo data
     session.tsx      who is logged in
     useData.ts       loads data and reloads after a change
@@ -82,6 +83,7 @@ src/
   styles/            plain CSS: tokens (colours, spacing), base, layout, components
 supabase/
   migrations/        the database: tables, security rules, storage, starting data (run in order)
+  sample_data.sql    optional: the demo hostels and accounts, loaded into the real database
   functions/         server functions that run on Supabase (custodian invites, payments)
   SETUP.md           step-by-step setup in the Supabase dashboard
 ```

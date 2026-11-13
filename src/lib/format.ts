@@ -2,6 +2,12 @@ export const ugx = (n: number) => 'UGX ' + Math.round(n).toLocaleString('en-US')
 /** Short money for dashboards: UGX 1.35M, UGX 250K. */
 export const ugxCompact = (n: number) => n >= 1e6 ? `UGX ${(n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 2).replace(/\.?0+$/, '')}M` : n >= 1e3 ? `UGX ${Math.round(n / 1e3)}K` : ugx(n);
 export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]!.toUpperCase()).join('');
+/** A date as YYYY-MM-DD in the person's own time zone (toISOString would give the UTC date, a day off around midnight in Uganda). */
+export const ymd = (d: Date = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Moves a YYYY-MM-DD date by n days. */
+export const addDays = (d: string, n: number) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return ymd(x); };
+/** A YYYY-MM-DD date for people, like 31 Aug 2027. Other text is returned as it is. */
+export const dayLabel = (d?: string) => !d ? '' : /^\d{4}-\d\d-\d\d$/.test(d) ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : d;
 export const nowTime = () => new Date().toTimeString().slice(0, 5);
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 export const fullDate = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

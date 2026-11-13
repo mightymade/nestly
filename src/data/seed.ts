@@ -1,10 +1,11 @@
 import { HOSTELS, UNIVERSITIES } from './catalog';
+import { ymd } from '../lib/format';
 import type { AuditEntry, Booking, DB, Hostel, Payout, Room, SubPayment, Tenant, User, VerificationDoc, Visitor } from './types';
 
 const now = Date.now();
 const ago = (minutes: number) => new Date(now - minutes * 60000).toISOString();
 const daysAgo = (d: number) => ago(d * 24 * 60);
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => ymd();
 const hhmm = (d: Date) => d.toTimeString().slice(0, 5);
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, '.').replace(/^\.|\.$/g, '');
@@ -58,7 +59,7 @@ function visitors(): Visitor[] {
   const day = todayIso();
   names.forEach((name, i) => {
     const tinD = new Date(now - (12 + i * 41 + (i % 3) * 9) * 60000);
-    if (tinD.toISOString().slice(0, 10) !== day || tinD.getHours() < 7) return;
+    if (ymd(tinD) !== day || tinD.getHours() < 7) return;
     const inside = i < 3;
     const toutD = new Date(tinD.getTime() + (25 + (i % 4) * 22) * 60000);
     out.push({ id: 'vs' + i, hostelId: 'h1', name, room: rooms[i % rooms.length]!, tin: hhmm(tinD), tout: inside || toutD.getTime() > now ? null : hhmm(toutD), via: i % 4 === 2 ? 'Custodian' : 'QR', phone: i % 3 === 1 ? undefined : `07${(70 + i) % 100} ${String(100 + i * 37).slice(-3)} ${String(400 + i * 53).slice(-3)}`, date: day });
@@ -80,7 +81,7 @@ function docSvg(title: string, name: string, tone: string) {
 export function seed(): DB {
   const hostels: Hostel[] = JSON.parse(JSON.stringify(HOSTELS));
   const users: User[] = [
-    { id: 'u1', role: 'student', name: 'Sarah Atim', email: 'sarah.atim@ucu.ac.ug', password: PW, phone: '0772 000 111', universityId: 'ucu', emailVerified: true, verifiedUntil: '31 Aug 2027', joined: daysAgo(330) },
+    { id: 'u1', role: 'student', name: 'Sarah Atim', email: 'sarah.atim@ucu.ac.ug', password: PW, phone: '0772 000 111', universityId: 'ucu', emailVerified: true, verifiedUntil: '2027-08-31', joined: daysAgo(330) },
     { id: 'u2', role: 'custodian', name: 'Peter Kizito', username: 'peter.k', email: 'peter.kizito@gmail.com', password: PW, phone: '0701 234 567', emailVerified: true, hostelId: 'h1', joined: daysAgo(400), lastActive: ago(8) },
     { id: 'u3', role: 'owner', name: 'Grace Namuli', username: 'grace.n', email: 'grace.namuli@gmail.com', password: PW, phone: '0772 454 567', emailVerified: true, ownerStatus: 'approved',
       payout: { method: 'mtn', to: '0772 454 567', name: 'Grace Namuli' }, joined: daysAgo(520) },
@@ -130,7 +131,7 @@ export function seed(): DB {
     const room = rooms.find(r => r.no === no);
     const type = room?.type ?? TYPE_OF[tid]!;
     const uid = tid === 't1' ? 'u1' : 'st-' + tid;
-    if (uid !== 'u1') users.push({ id: uid, role: 'student', name, email: `${slug(name)}${i}@ucu.ac.ug`, password: PW, phone, universityId: 'ucu', emailVerified: i % 6 !== 5, verifiedUntil: '31 Aug 2027', joined: daysAgo(200 + i * 9) });
+    if (uid !== 'u1') users.push({ id: uid, role: 'student', name, email: `${slug(name)}${i}@ucu.ac.ug`, password: PW, phone, universityId: 'ucu', emailVerified: i % 6 !== 5, verifiedUntil: '2027-08-31', joined: daysAgo(200 + i * 9) });
     const bid = tid === 't1' ? 'NST-31502' : `NST-${30100 + i * 37}`;
     const at = daysAgo(status === 'due' ? 2 + i % 3 : 95 + i * 2);
     tenants.push({ id: tid, hostelId: 'h1', name, phone, type, status, room: room?.no ?? '', roomId: room?.id, bed: room ? bed : undefined, userId: uid, bookingId: bid,
@@ -148,7 +149,7 @@ export function seed(): DB {
     ['Rose Achieng', 'h2', 'Single, self-contained', 'h2', 6], ['Henry Ssali', 'h2', 'Double, shared bathroom', 'h2', 18], ['Grace Amony', 'h12', 'Double, self-contained', 'h12', 10], ['Moses Waiswa', 'h12', 'Single, self-contained', 'h12', 23]];
   NEXT.forEach(([name, hid, type, , d], i) => {
     const uid = 'st-n' + i; const at = daysAgo(d); const fee = hostels.find(h => h.id === hid)!.fee;
-    users.push({ id: uid, role: 'student', name, email: `${slug(name)}@ucu.ac.ug`, password: PW, phone: `07${71 + i} ${300 + i * 21} ${500 + i * 13}`, universityId: 'ucu', emailVerified: true, verifiedUntil: '31 Aug 2027', joined: daysAgo(d + 40) });
+    users.push({ id: uid, role: 'student', name, email: `${slug(name)}@ucu.ac.ug`, password: PW, phone: `07${71 + i} ${300 + i * 21} ${500 + i * 13}`, universityId: 'ucu', emailVerified: true, verifiedUntil: '2027-08-31', joined: daysAgo(d + 40) });
     bookings.push({ id: `NST-32${String(110 + i * 7)}`, userId: uid, hostelId: hid, room: type, sem: 'Jan to May 2027', fee, status: 'paid', paidOn: dateLabel(at), at, payRef: `MP${String(270000 + i * 5113).slice(0, 6)}.${2200 + i}` });
   });
 
