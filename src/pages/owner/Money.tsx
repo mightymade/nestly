@@ -13,7 +13,9 @@ import { DateFilter, inRange, presets, type Range } from '../../components/DateF
 import { SearchIcon } from '../../components/SearchIcon';
 import { ugx } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { ownerMoney, paySubscription } from '../../services/api';
+import { ownerMoney, paySubscription, startSubscriptionPayment } from '../../services/api';
+import { live } from '../../services/supabase';
+import { LivePay } from '../../components/LivePay';
 import { useData } from '../../services/useData';
 import { dayDate, HostelSwitcher, Locked, maskTo, shortDate, useOwner } from './shared';
 
@@ -118,10 +120,18 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
 function PaySub({ fee, months, phone0, ownerId, onClose }: { fee: number; months: number; phone0: string; ownerId: string; onClose: () => void }) {
   const toast = useToast();
   const [m, setM] = useState<'mtn' | 'airtel'>('mtn'); const [num, setNum] = useState(phone0); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
   async function go() {
     if (!/^0?7\d{8}$/.test(num.replace(/\s/g, ''))) return setErr('Enter a 10-digit mobile money number.');
-    setBusy(true); const s = await paySubscription(ownerId, months); toast(`Subscription paid until ${dayDate(s.paidUntil)}`); onClose();
+    if (live) { setPaying(true); return; }
+    setBusy(true);
+    try { const s = await paySubscription(ownerId, months); toast(`Subscription paid until ${dayDate(s.paidUntil)}`); onClose(); }
+    catch (x) { setErr((x as Error).message); setBusy(false); }
   }
+  if (paying) return <Overlay title="Pay your Nestly subscription" onClose={() => {}} dismissable={false} width={440}>
+    <LivePay start={() => startSubscriptionPayment(months, num, m)} amount={fee * months} phone={num} method={m}
+      onPaid={x => { toast(`Subscription paid until ${dayDate(x.paidUntil ?? '')}`); onClose(); }}
+      onFailed={msg => { setErr(msg); setPaying(false); }} /></Overlay>;
   return <Overlay title="Pay your Nestly subscription" onClose={onClose} width={440} footer={<Btn block loading={busy} onClick={go}><Smartphone size={16} />Pay {ugx(fee * months)}</Btn>}>
     <div className="stack">
       <p className="small muted">{months > 1 ? `${months} months you are behind on, ${ugx(fee)} each.` : 'One month of Nestly for your hostels.'} You get a prompt on your phone to approve. Paused hostels come back straight away.</p>

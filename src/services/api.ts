@@ -280,17 +280,43 @@ export async function toggleSaved(userId: string, hid: string) {
 export async function listSaved(userId: string) { await wait(300); return (savedIds(userId).map(hostelById).filter(Boolean) as Hostel[]).filter(isLive); }
 
 /* ---------- Bookings ---------- */
-/** Shown until mobile money payments are connected to real data. */
-const PAYMENTS_SOON = 'Paying by mobile money is not switched on yet. Try again soon.';
+/* ---------- Mobile money with real data (Flutterwave, through the "payments" server function) ---------- */
+/** What happened to a payment. `next` says what the person must do while it is pending. */
+export type PayResult = { txRef?: string; result: 'paid' | 'failed' | 'pending'; kind?: 'booking' | 'subscription'; bookingId?: string; hostelId?: string; paidUntil?: string; cancelUntil?: string; error?: string;
+  next?: { type: 'approve' | 'otp' | 'redirect'; note?: string; url?: string } };
+async function payCall(body: Record<string, unknown>): Promise<PayResult> {
+  const { data, error } = await sb!.functions.invoke('payments', { body });
+  if (error || !data) {
+    let msg = 'We could not reach the payment service. Check your connection and try again.'; let field: string | undefined;
+    try { const b = await (error as { context?: Response })?.context?.json(); if (b?.error) { msg = b.error; field = b.field; } } catch { /* keep the general message */ }
+    throw new ApiError(msg, field);
+  }
+  const r: PayResult = { txRef: data.tx_ref ?? body.tx_ref as string | undefined, result: data.result, kind: data.kind, bookingId: data.booking_id, hostelId: data.hostel_id,
+    paidUntil: data.paid_until, cancelUntil: data.cancel_until, error: data.error ?? data.reason, next: data.next };
+  if (r.result !== 'pending') await reload();
+  // A payment method that needs a web page (not usual for mobile money): go there and come back to /pay/return.
+  if (r.result === 'pending' && r.next?.type === 'redirect' && r.next.url) { window.location.assign(r.next.url); return new Promise<never>(() => undefined); }
+  return r;
+}
+/** Live data: asks Flutterwave to charge a student's phone for a booking fee. The server sets the price. Returns the pending payment. */
+export const startBookingPayment = (hid: string, roomIdx: number, phone: string, method: 'mtn' | 'airtel') =>
+  payCall({ action: 'start', kind: 'booking', hostel_id: hid, room: roomIdx, phone, network: method, back: siteUrl() });
+/** Live data: asks Flutterwave to charge an owner's phone for months of subscription. */
+export const startSubscriptionPayment = (months: number, phone: string, method: 'mtn' | 'airtel') =>
+  payCall({ action: 'start', kind: 'subscription', months, phone, network: method, back: siteUrl() });
+/** Live data: sends the code Flutterwave asked for (in test mode it is always 123456). */
+export const sendPaymentCode = (txRef: string, otp: string) => payCall({ action: 'otp', tx_ref: txRef, otp });
+/** Live data: asks the server to check a payment with Flutterwave and confirm it if the money arrived. */
+export const confirmPayment = (q: { txRef: string }) => payCall({ action: 'confirm', tx_ref: q.txRef });
 export async function listBookings(userId: string) {
   await wait(350);
-  return getDb().bookings.filter(b => b.userId === userId).slice().reverse().map(b => ({ ...b, hostel: hostelById(b.hostelId)! }));
+  return getDb().bookings.filter(b => b.userId === userId && b.status !== 'pending').slice().reverse().map(b => ({ ...b, hostel: hostelById(b.hostelId)! }));
 }
 /** True when the student already has an active booking for that semester. */
-export const hasBookingFor = (userId: string, sem: string) => getDb().bookings.some(b => b.userId === userId && b.sem === sem && b.status !== 'cancelled');
+export const hasBookingFor = (userId: string, sem: string) => getDb().bookings.some(b => b.userId === userId && b.sem === sem && b.status !== 'cancelled' && b.status !== 'pending');
 /** Books a room and takes the booking fee by mobile money. Takes student, hostel, room type index, phone and network. Returns the booking. The fee goes straight to the owner. Throws ApiError if the payment fails or the room is gone. */
 export async function createBooking(userId: string, hid: string, roomIdx: number, phone: string, method: 'mtn' | 'airtel') {
-  if (live) throw new ApiError(PAYMENTS_SOON);
+  if (live) throw new ApiError('Use startBookingPayment with real data.');
   await wait(2200);
   const u = getDb().users.find(x => x.id === userId)!; const h = hostelById(hid)!; const r = h.rooms[roomIdx]!;
   if (!u.emailVerified) throw new ApiError('Confirm your student email before booking.');
@@ -599,7 +625,7 @@ function addMonths(u: User, months: number, via: SubPayment['via'], note?: strin
 }
 /** The owner pays their subscription by mobile money for a number of months. Paused hostels come back. Returns the new subscription state. */
 export async function paySubscription(ownerId: string, months = 1) {
-  if (live) throw new ApiError(PAYMENTS_SOON);
+  if (live) throw new ApiError('Use startSubscriptionPayment with real data.');
   await wait(900); const u = getDb().users.find(x => x.id === ownerId)!;
   addMonths(u, months, 'app');
   audit('Paid subscription', u.name, `${months} month${months > 1 ? 's' : ''}`); await commit(); return subscriptionOf(u);

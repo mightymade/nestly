@@ -110,4 +110,4 @@ Every exported function in `src/services/api.ts` has a short comment above it: w
 - Functions are `async` and wait a little on purpose (`wait(...)`), so loading states already work.
 - Errors are thrown as `ApiError(message, field?)`. Forms show `message` under the field named by `field`. Keep that pattern.
 - `commit()` saves the fake database and tells screens to reload. A real backend can replace it with refetching.
-- With real data (Supabase), everything works except money: booking a room and paying the subscription show "not switched on yet" until Flutterwave payments are added. Subscription payments the admin records by hand do work.
+- With real data (Supabase), everything works, including mobile money through Flutterwave's v4 API (`supabase/functions/payments`). In demo mode, payments are pretend: a phone number ending in `0000` is declined.

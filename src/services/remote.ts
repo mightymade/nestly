@@ -177,7 +177,8 @@ export async function load(empty: () => DB): Promise<DB> {
   const acc = new Map(accounts.map(a => [a.owner_id as string, fromRow<Record<string, unknown>>(a)]));
   ownerAccountIds = new Set(acc.keys());
   db.users = profiles.map(p => { const u = fromRow<User>(p); const a = acc.get(u.id); if (a) { delete a.ownerId; Object.assign(u, a); } u.password = ''; return u; });
-  db.bookings = bookings.map(r => fromRow(r)); db.rooms = rooms.map(r => fromRow(r)); db.tenants = tenants.map(r => fromRow(r));
+  // A booking whose payment is not finished is not a booking yet (the payments server function owns it).
+  db.bookings = bookings.filter(r => r.status !== 'pending').map(r => fromRow(r)); db.rooms = rooms.map(r => fromRow(r)); db.tenants = tenants.map(r => fromRow(r));
   db.visitors = visitors.map(r => fromRow(r)); db.notices = notices.map(r => fromRow(r)); db.notifications = notes.map(r => fromRow(r));
   db.invites = invites.map(r => fromRow(r)); db.docs = docs.map(r => fromRow(r)); db.flags = flags.map(r => fromRow(r));
   db.subPayments = subs.map(r => fromRow(r)); db.audit = audit.map(r => fromRow(r));

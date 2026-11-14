@@ -1538,3 +1538,7 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 @keyframes boot-spin { to { transform: rotate(360deg) } }
 .check-mail { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--primary-soft); color: var(--text) }
 .check-mail p { margin: 0 }
+
+/* Payment result, after coming back from Flutterwave */
+.pay-result .pr-icon { width: 60px; height: 60px; border-radius: 18px }
+.pay-result .btn { width: 100% }

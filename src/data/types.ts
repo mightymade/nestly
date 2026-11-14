@@ -38,7 +38,7 @@ export interface Hostel {
 export type HostelStatus = 'draft' | 'in_review' | 'live' | 'changes_requested' | 'suspended';
 export interface Review { id: string; hostelId: string; /** The student who wrote it and the stay it is about. */ userId?: string; bookingId?: string; who: string; stars: number; when: string; text: string; reply?: string; /** Hidden by an admin after a report. */ hidden?: boolean }
 
-export type BookingStatus = 'paid' | 'checked-in' | 'completed' | 'rated' | 'cancelled';
+export type BookingStatus = 'pending' | 'paid' | 'checked-in' | 'completed' | 'rated' | 'cancelled';
 export interface Booking { id: string; userId: string; hostelId: string; room: string; roomNo?: string; sem: string; fee: number; status: BookingStatus; paidOn: string; cancelUntil?: string; at?: string; payRef?: string }
 
 export interface Visitor { id: string; hostelId: string; name: string; room: string; /** The resident they came to see. */ host?: string; phone?: string; tin: string; tout: string | null; via: 'QR' | 'Custodian'; date: string }

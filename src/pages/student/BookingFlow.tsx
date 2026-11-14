@@ -6,8 +6,10 @@ import { useToast } from '../../components/Toast';
 import { Art, Btn, Field, TextInput } from '../../components/ui';
 import type { Booking, Hostel } from '../../data/types';
 import { copyText, ugx } from '../../lib/format';
-import { ApiError, bookingSem, createBooking, hasBookingFor, semDates, semName } from '../../services/api';
+import { ApiError, bookingSem, createBooking, hasBookingFor, semDates, semName, startBookingPayment } from '../../services/api';
+import { LivePay } from '../../components/LivePay';
 import { useMe } from '../../services/session';
+import { live } from '../../services/supabase';
 
 export function RoomList({ h, sel, onSel }: { h: Hostel; sel: number; onSel: (i: number) => void }) {
   return <div className="stack-sm" role="radiogroup" aria-label="Room type">{h.rooms.map((r, i) => {
@@ -50,6 +52,7 @@ export function BookingFlow({ h, room, onRoom, onClose }: { h: Hostel; room: num
 
   async function pay() {
     setErr(null); setFail(null); setStep('wait');
+    if (live) return; // LivePay below starts the real payment
     try { setBooking(await createBooking(me.id, h.id, room, phone, method)); setStep('done'); }
     catch (x) { const a = x as ApiError; if (a.field === 'phone') setErr(a.message); else setFail(a.message); setStep('pay'); }
   }
@@ -78,6 +81,12 @@ export function BookingFlow({ h, room, onRoom, onClose }: { h: Hostel; room: num
       <div className="receipt"><div className="sum"><span className="muted">{h.name}</span><span>{r.t}</span></div><div className="sum total"><span>Total now</span><span className="num">{ugx(h.fee)}</span></div></div>
       <p className="hint row-sm" style={{ justifyContent: 'center', textAlign: 'center' }}><Lock size={13} />Paid straight to {h.name}. Test mode, no real money moves yet.</p>
     </div></Overlay>;
+
+  if (step === 'wait' && live) return <Overlay title="Pay the booking fee" onClose={() => {}} dismissable={false} width={440}>
+    <Stepper at={1} />
+    <LivePay start={() => startBookingPayment(h.id, room, phone, method)} amount={h.fee} phone={phone} method={method}
+      onPaid={x => { setBooking({ id: x.bookingId ?? '', cancelUntil: x.cancelUntil } as Booking); setStep('done'); }}
+      onFailed={(m, field) => { if (field === 'phone') setErr(m); else setFail(m); setStep('pay'); }} /></Overlay>;
 
   if (step === 'wait') return <Overlay title="Waiting for approval" onClose={() => {}} dismissable={false} width={440}>
     <Stepper at={1} />

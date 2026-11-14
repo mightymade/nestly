@@ -17,6 +17,7 @@ Run the files in this order:
 4. `0004_starting_data.sql`: the four universities and the subscription price
 5. `0005_stage2.sql`: fair room counts, lists in the right order, and messages to admins
 6. `0006_stage3.sql`: the visitor page at the gate, removing custodians, cancelled bookings, reviews and documents
+7. `0007_payments.sql`: mobile money payments through Flutterwave
 
 If one fails, stop and send the error message. Don't run the next file.
 
@@ -82,6 +83,27 @@ Custodians join with an invite code and may have no email inbox. A small server 
 
 You don't need to add any settings. Supabase gives the function the keys it needs.
 
+## 5b. Take payments with Flutterwave (test mode)
+
+Booking fees and owner subscriptions are paid by MTN or Airtel mobile money through Flutterwave (API v4). The person gets a prompt on their phone; in the sandbox they type the code `123456` instead. No real money moves.
+
+1. Sign up for a Flutterwave **developer sandbox** account: https://onboarding.flutterwave.com/signup/steps/670fd6ca31db5a18fd7d03a7 (the normal sign-up does not list Uganda; the sandbox does not ask).
+2. In the sandbox dashboard, open **API keys** and copy the **Client ID** and **Client Secret**.
+3. In Supabase, open **Edge Functions > Deploy a new function > Via Editor**, name it exactly `payments`, paste everything from `supabase/functions/payments/index.ts`, and click **Deploy**.
+4. Open the `payments` function's **Details** and turn **off** "Verify JWT" (Enforce JWT verification). Flutterwave's messages have no Nestly login; the function checks logins itself.
+5. Open **Edge Functions > Secrets** and add two:
+
+   | Name | Value |
+   |---|---|
+   | `FLW_CLIENT_ID` | the Client ID |
+   | `FLW_CLIENT_SECRET` | the Client Secret |
+
+6. Optional but useful: in the sandbox dashboard, open **Test webhooks** and set the URL to `https://YOUR-PROJECT.supabase.co/functions/v1/payments` (your Project URL plus `/functions/v1/payments`). Then a payment is confirmed even if the person closes Nestly before it finishes. The function never trusts what a webhook says: it always asks Flutterwave itself.
+
+**Try it:** log in as a student, book a room, pay with any Uganda number (like `0772 123 456`), and type `123456` when Nestly asks for the code. You are booked.
+
+**Where the money goes:** every fee lands in Nestly's Flutterwave balance. Sending booking fees straight to each owner (Flutterwave "subaccounts") is not set up yet, because owners would need bank accounts registered with Flutterwave.
+
 ## 6. Make yourself the admin
 
 1. Run the app (see "Run the app" below) and sign up through **I own a hostel** with your own email. Confirm the email.
@@ -113,4 +135,5 @@ To run on the demo data instead, start it with `VITE_DATA=demo npm run dev`, or 
 | Project URL | `.env`, Vercel | Yes |
 | anon / publishable key | `.env`, Vercel | Yes. It's built for browsers, and the security rules do the protecting. |
 | service_role / secret key | only inside Supabase functions | **Never.** Don't put it in `.env`, GitHub or chat. |
+| Flutterwave Client Secret | only in Supabase function secrets | **Never.** |
 | database password | nowhere in the app | **Never.** |

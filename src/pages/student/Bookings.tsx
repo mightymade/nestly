@@ -16,7 +16,7 @@ import { useData } from '../../services/useData';
 import { BookingFlow } from './BookingFlow';
 
 type B = Booking & { hostel: Hostel };
-const LABEL: Record<BookingStatus, [string, Tone]> = { paid: ['Paid', 'primary'], 'checked-in': ['Checked in', 'success'], completed: ['Completed', 'neutral'], rated: ['Rated', 'neutral'], cancelled: ['Cancelled', 'danger'] };
+const LABEL: Record<BookingStatus, [string, Tone]> = { pending: ['Paying', 'neutral'], paid: ['Paid', 'primary'], 'checked-in': ['Checked in', 'success'], completed: ['Completed', 'neutral'], rated: ['Rated', 'neutral'], cancelled: ['Cancelled', 'danger'] };
 const ORDER: BookingStatus[] = ['paid', 'checked-in', 'completed', 'rated'];
 
 function Tracker({ status }: { status: BookingStatus }) {

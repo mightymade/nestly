@@ -18,7 +18,7 @@ import { HostelSwitcher, Locked, useOwner } from './shared';
 type Tab = 'upcoming' | 'staying' | 'past';
 type Row = Awaited<ReturnType<typeof listOwnerBookings>>[number];
 const TAB_OF = (s: BookingStatus): Tab => (s === 'paid' ? 'upcoming' : s === 'checked-in' ? 'staying' : 'past');
-const ST: Record<BookingStatus, [string, Tone]> = { paid: ['Paid, arriving', 'warn'], 'checked-in': ['Staying', 'success'], completed: ['Stay ended', 'neutral'], rated: ['Stay ended', 'neutral'], cancelled: ['Cancelled', 'danger'] };
+const ST: Record<BookingStatus, [string, Tone]> = { pending: ['Paying', 'neutral'], paid: ['Paid, arriving', 'warn'], 'checked-in': ['Staying', 'success'], completed: ['Stay ended', 'neutral'], rated: ['Stay ended', 'neutral'], cancelled: ['Cancelled', 'danger'] };
 
 export function OwnerBookings() {
   const { me, approved } = useOwner();
