@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { CONTACT_EMAIL } from '../Legal';
 import { ChevronDown, LifeBuoy, Mail } from 'lucide-react';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
@@ -47,7 +49,8 @@ export function HelpPage() {
     <Card title="Common questions" fill={!phone} scroll={!phone}>{faq()[role].map(([q, a]) => <details key={q} className="faq"><summary>{q}<ChevronDown size={18} className="ic" /></summary><p>{a}</p></details>)}</Card>
     <Card><div className="row start"><span className="icon-tile primary"><LifeBuoy size={20} /></span><div className="grow stack-sm"><h2>Still need help?</h2>
       <p className="muted">Email the Nestly team. We reply within one working day.</p>
-      <p className="row-sm strong" style={{ userSelect: 'all' }}><Mail size={16} />support@nestly.app</p></div></div></Card>
+      <p className="row-sm strong" style={{ userSelect: 'all' }}><Mail size={16} />{CONTACT_EMAIL}</p>
+      <p className="small"><Link to="/privacy">Privacy policy</Link><span className="muted"> · </span><Link to="/terms">Terms of use</Link></p></div></div></Card>
   </>;
   if (phone) return <><BackBar title="Help" to={!u ? '/s/explore' : { student: '/s/account', custodian: '/c/settings', owner: '/o/settings', admin: '/a/settings' }[role]} /><main className="m-main pushed">{body}</main></>;
   return <><PageHeader title="Help" /><div className="fill-col fill">{body}</div></>;

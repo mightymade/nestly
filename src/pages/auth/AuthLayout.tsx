@@ -32,23 +32,16 @@ const HELP: [string, string][] = [
   ['I forgot my password.', 'On the log in page, tap Forgot password? and we send a reset link to your email.'],
 ];
 
-/** Small footer under the sign-in panel. Help and Privacy open short answers instead of pages that need an account. */
+/** Small footer under the sign-in panel. Help opens short answers; Privacy and Terms open the full pages. */
 function AuthFoot() {
-  const [open, setOpen] = useState<'help' | 'privacy' | null>(null);
+  const [open, setOpen] = useState(false);
   return <footer className="auth-foot">
     <span>© 2026 Nestly</span><span aria-hidden="true">·</span>
-    <button type="button" onClick={() => setOpen('help')}>Help</button><span aria-hidden="true">·</span>
-    <button type="button" onClick={() => setOpen('privacy')}>Privacy</button>
-    {open === 'help' && <Overlay title="Help" onClose={() => setOpen(null)} width={480}>
+    <button type="button" onClick={() => setOpen(true)}>Help</button><span aria-hidden="true">·</span>
+    <Link to="/privacy">Privacy</Link><span aria-hidden="true">·</span>
+    <Link to="/terms">Terms</Link>
+    {open && <Overlay title="Help" onClose={() => setOpen(false)} width={480}>
       <div className="stack">{HELP.map(([q, a]) => <div key={q}><b className="ink">{q}</b><p className="small muted" style={{ marginTop: 4 }}>{a}</p></div>)}</div>
-    </Overlay>}
-    {open === 'privacy' && <Overlay title="Privacy" onClose={() => setOpen(null)} width={480}>
-      <div className="stack small">
-        <p>Nestly keeps only what it needs to book a room: your name, email, phone number and bookings.</p>
-        <p>Hostel owners see the name and phone number of students who book with them. Custodians see the students at their hostel.</p>
-        <p>Owner ID documents are seen only by the Nestly team that checks them. We never sell your details.</p>
-        <p className="muted">This is a student project. A full privacy policy will be added before Nestly takes real bookings.</p>
-      </div>
     </Overlay>}
   </footer>;
 }

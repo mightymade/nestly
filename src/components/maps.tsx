@@ -32,7 +32,7 @@ export function useLeaflet(opts: L.MapOptions) {
 
 export const uniIcon = (label: string, logo?: string) => L.divIcon({ className: 'lf-plain', iconSize: [0, 0],
   html: `<div class="cmap-uni"><span class="pulse"></span>${logo ? `<span class="dot logo"><img src="${escapeHtml(logo)}" alt=""></span>` : `<span class="dot">${GRAD}</span>`}<span class="label">${escapeHtml(label)}</span></div>` });
-const pinIcon = () => L.divIcon({ className: 'lf-plain', iconSize: [0, 0], html: `<div class="pick-pin">${PIN}</div>` });
+export const pinIcon = () => L.divIcon({ className: 'lf-plain', iconSize: [0, 0], html: `<div class="pick-pin">${PIN}</div>` });
 export const escapeHtml = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 const GRAD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>';
 const PIN = '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" fill="currentColor" fill-opacity=".25"/><circle cx="12" cy="10" r="3" fill="#fff"/></svg>';

@@ -1,6 +1,6 @@
 import { ArrowRight, Building2, Check } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PasswordStrength, passwordOk } from '../../components/PasswordStrength';
 import { useToast } from '../../components/Toast';
 import { Art, Btn, Field, PasswordInput, TextInput } from '../../components/ui';
@@ -68,5 +68,6 @@ function Account({ inv }: { inv: Inv }) {
     </div>
     {err.form && <span className="err">{err.form}</span>}
     <Btn type="submit" block loading={busy}>Create account</Btn>
+    <p className="tiny muted center">By creating an account you agree to the <Link to="/terms" target="_blank">terms of use</Link> and <Link to="/privacy" target="_blank">privacy policy</Link>.</p>
   </form>;
 }

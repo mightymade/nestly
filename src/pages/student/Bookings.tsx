@@ -1,7 +1,8 @@
-import { CalendarDays, Compass, Copy, Receipt, Repeat, Star, XCircle } from 'lucide-react';
+import { CalendarDays, Compass, Copy, Receipt, Repeat, Star, XCircle , Navigation } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Overlay } from '../../components/Overlay';
+import { directionsUrl } from '../../lib/geo';
 import { PageHeader } from '../../components/PageHeader';
 import { Pill, type Tone } from '../../components/Pill';
 import { Segmented } from '../../components/Segmented';
@@ -10,7 +11,7 @@ import { useToast } from '../../components/Toast';
 import { Art, Btn, Skeleton } from '../../components/ui';
 import type { Booking, BookingStatus, Hostel } from '../../data/types';
 import { copyText, ugx } from '../../lib/format';
-import { cancelBooking, hasBookingFor, listBookings, NEXT_SEM, rateBooking } from '../../services/api';
+import { cancelBooking, hasBookingFor, listBookings, NEXT_SEM, rateBooking , hostelPoint } from '../../services/api';
 import { useMe } from '../../services/session';
 import { useData } from '../../services/useData';
 import { BookingFlow } from './BookingFlow';
@@ -52,6 +53,7 @@ export function Bookings() {
       <Btn kind="secondary" size="sm" onClick={() => setReceipt(b)}><Receipt size={15} />Receipt</Btn>
       {b.status === 'completed' && <Btn size="sm" onClick={() => setRate(b)}><Star size={15} />Rate your stay</Btn>}
       {b.status === 'paid' && <Btn kind="danger" size="sm" onClick={() => setCancel(b)}><XCircle size={15} />Cancel</Btn>}
+      {(b.status === 'paid' || b.status === 'checked-in') && (() => { const p = hostelPoint(b.hostel); return p && <a className="btn btn-secondary btn-sm" href={directionsUrl(p)} target="_blank" rel="noreferrer"><Navigation size={15} />Directions</a>; })()}
       {b.status === 'paid' && b.cancelUntil && <span className="hint">Free to cancel until {b.cancelUntil}</span>}
     </div>
   </article>;

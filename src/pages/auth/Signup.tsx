@@ -1,6 +1,6 @@
 import { ArrowRight, Check, Mail, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PasswordStrength, passwordOk } from '../../components/PasswordStrength';
 import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
@@ -80,7 +80,7 @@ function Details({ uniId, onBack, onDone }: { uniId: string; onBack: () => void;
         {!(touched.password && errs.password) && <PasswordStrength value={f.password} />}</div>
     </div>
     <label className={'check small' + (show('agree') ? ' bad' : '')} style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f.agree} onChange={set('agree')} aria-invalid={!!show('agree') || undefined} />
-      <span>I agree to the Nestly terms and privacy policy.{show('agree') && <b className="sr-only"> {show('agree')}</b>}</span></label>
+      <span>I agree to the Nestly <Link to="/terms" target="_blank">terms of use</Link> and <Link to="/privacy" target="_blank">privacy policy</Link>.{show('agree') && <b className="sr-only"> {show('agree')}</b>}</span></label>
     <Btn type="submit" block loading={busy}>Create account</Btn>
   </form>;
 }

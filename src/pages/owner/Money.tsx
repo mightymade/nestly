@@ -54,13 +54,17 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'nestly-booking-fees.csv'; a.click(); URL.revokeObjectURL(a.href);
   };
 
+  // Not started: no live hostel yet, so nothing to pay. Never paid: the first payment is due from the day a hostel went live.
+  const off = s.state === 'off';
+  const subText = off ? 'Starts when your first hostel goes live' : s.overdue ? `${s.neverPaid ? 'Due' : 'Overdue'} since ${dayDate(s.due)}` : `Paid until ${dayDate(s.paidUntil)}`;
+  const subPill = off ? <Pill tone="neutral">Not started</Pill> : s.overdue ? <Pill tone="danger">Pay now</Pill> : <Pill tone="success">Paid</Pill>;
   const strip = <div className="card sstrip" aria-label="Money summary">
     <div className="sc"><span className="sc-l">Booking fees this month</span><span className="sc-v num">{ugx(d.month)}</span><span className="sc-s">{d.monthCount} {d.monthCount === 1 ? 'booking' : 'bookings'} · {ugx(d.collected)} this semester</span></div>
     <Link to="/o/settings/payout" className="sc"><span className="sc-l"><ShieldCheck size={13} />Paid straight into</span>
       <span className="sc-v">{d.account ? maskTo(d.account.method, d.account.to) : <small className="warn-t">No account yet</small>}</span><span className="sc-s">{d.account ? `${d.account.name} · tap to change` : 'Add one so students can pay you'}</span></Link>
     <button type="button" className={'sc' + (s.overdue ? ' due' : '')} onClick={() => setSubOpen(true)}><span className="sc-l">Nestly subscription</span>
-      <span className="sc-v num">{ugx(s.fee)}<small>/ month</small></span><span className={'sc-s' + (s.overdue ? ' down' : '')}>{s.overdue ? `Overdue since ${dayDate(s.due)}` : `Paid until ${dayDate(s.paidUntil)}`}</span>
-      <span className="tag">{s.overdue ? <Pill tone="danger">Pay now</Pill> : <Pill tone="success">Paid</Pill>}</span></button>
+      <span className="sc-v num">{ugx(s.fee)}<small>/ month</small></span><span className={'sc-s' + (s.overdue ? ' down' : '')}>{subText}</span>
+      <span className="tag">{subPill}</span></button>
   </div>;
 
   const cols: Column<Fee>[] = [
@@ -94,8 +98,10 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
       <div key={k} className="review-row"><div className="min0"><span className="tiny muted">{k}</span><b className="small ink">{v}</b></div></div>)}</div>
   </Overlay>;
   const subSheet = subOpen && <Overlay title="Nestly subscription" onClose={() => setSubOpen(false)} width={440}
-    footer={<><Btn kind="secondary" onClick={() => { setSubOpen(false); setReceipts(true); }}><Receipt size={15} />Receipts</Btn><Btn onClick={() => { setSubOpen(false); setPay(true); }}>{s.overdue ? 'Pay now' : 'Pay next month'}</Btn></>}>
-    <div className="review-list">{([['Price', `${ugx(s.fee)} a month${s.perHostel ? `, ${s.hostels || 1} ${s.hostels === 1 ? 'hostel' : 'hostels'} at ${ugx(s.unit)} each` : ', for all your hostels'}`], ['Status', s.overdue ? `Overdue since ${dayDate(s.due)}${s.state === 'grace' ? `, pay by ${dayDate(s.graceEnd)} to stay on Explore` : ''}` : 'Paid'], ['Paid until', dayDate(s.paidUntil)], s.overdue ? ['You owe', `${ugx(s.owed)}${s.paused ? `. ${s.paused} paused ${s.paused === 1 ? 'hostel comes' : 'hostels come'} back as soon as you pay` : ''}`] : ['Next due', dayDate(s.due)],
+    footer={<><Btn kind="secondary" onClick={() => { setSubOpen(false); setReceipts(true); }}><Receipt size={15} />Receipts</Btn>{!off && <Btn onClick={() => { setSubOpen(false); setPay(true); }}>{s.overdue ? 'Pay now' : 'Pay next month'}</Btn>}</>}>
+    <div className="review-list">{([['Price', off ? `${ugx(s.unit)} a month${s.perHostel ? ' for each live hostel' : ''}` : `${ugx(s.fee)} a month${s.perHostel ? `, ${s.hostels || 1} ${s.hostels === 1 ? 'hostel' : 'hostels'} at ${ugx(s.unit)} each` : ', for all your hostels'}`],
+      ['Status', off ? 'Not started. You pay nothing until your first hostel is live on Explore.' : s.overdue ? `${s.neverPaid ? 'First payment due' : 'Overdue'} since ${dayDate(s.due)}${s.state === 'grace' ? `, pay by ${dayDate(s.graceEnd)} to stay on Explore` : ''}` : 'Paid'],
+      ['Paid until', s.neverPaid ? 'Not paid yet' : dayDate(s.paidUntil)], off ? ['Next due', 'When your first hostel goes live'] : s.overdue ? ['You owe', `${ugx(s.owed)}${s.paused ? `. ${s.paused} paused ${s.paused === 1 ? 'hostel comes' : 'hostels come'} back as soon as you pay` : ''}`] : ['Next due', dayDate(s.due)],
       ['Students pay into', d.account ? maskTo(d.account.method, d.account.to) : 'No account yet']] as [string, string][]).map(([k, v]) =>
       <div key={k} className="review-row"><div className="min0"><span className="tiny muted">{k}</span><b className="small ink">{v}</b></div></div>)}</div>
     <p className="tiny muted" style={{ marginTop: 10 }}>Nestly makes money only from this subscription. There is no commission on bookings.</p>
@@ -106,7 +112,7 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
 
   const exportBtn = <Btn kind="secondary" size="sm" onClick={csv} disabled={!fees.length}><Download size={15} />Export CSV</Btn>;
   const switcher = <HostelSwitcher hostels={hostels.map(h => ({ id: h.id, name: h.name }) as never)} value={hid} onChange={setHid} />;
-  const subBtn = <button type="button" className={'mn-subbtn' + (s.overdue ? ' due' : '')} onClick={() => setSubOpen(true)}>{s.overdue ? 'Subscription overdue' : 'Subscription paid'}<ChevronRight size={15} /></button>;
+  const subBtn = <button type="button" className={'mn-subbtn' + (s.overdue ? ' due' : '')} onClick={() => setSubOpen(true)}>{off ? 'Subscription not started' : s.overdue ? 'Subscription overdue' : 'Subscription paid'}<ChevronRight size={15} /></button>;
   if (phone) return <><PageHeader title="Money" actions={<>{subBtn}{switcher}</>} />{s.overdue && <div className="banner danger small"><span className="grow"><b>You owe {ugx(s.owed)}.</b> {s.paused ? `${s.paused} ${s.paused === 1 ? 'hostel is' : 'hostels are'} off Explore until you pay.` : s.state === 'grace' ? `Pay by ${dayDate(s.graceEnd)} to stay on Explore.` : 'Pay now to keep your hostels on Explore.'}</span><Btn size="sm" onClick={() => setPay(true)}>Pay</Btn></div>}{head}{totalLine}{body}{note}{overlays}</>;
   return <>
     <PageHeader title="Money" actions={<>{switcher}{exportBtn}</>} />

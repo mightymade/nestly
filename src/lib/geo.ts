@@ -41,3 +41,27 @@ export async function placeName(p: LatLng): Promise<string | null> {
     return [near, town].filter(Boolean).join(', ') || null;
   } catch { return null; }
 }
+
+/* Walking routes from the FOSSGIS routing service (the one openstreetmap.org uses). Free, needs internet, light use only. */
+const ROUTE = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving';
+export type Walk = { km: number; minutes: number; line: LatLng[] };
+const walks = new Map<string, Promise<Walk | null>>();
+/** The walking route between two points, or null when the service cannot be reached. Results are kept for the session. */
+export function walkRoute(a: LatLng, b: LatLng): Promise<Walk | null> {
+  const key = [a.lat, a.lng, b.lat, b.lng].map(n => n.toFixed(5)).join(',');
+  if (!walks.has(key)) walks.set(key, (async () => {
+    try {
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 6000);
+      const r = await fetch(`${ROUTE}/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`, { signal: ctl.signal }); clearTimeout(t);
+      if (!r.ok) return null;
+      const j = (await r.json()) as { routes?: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }[] };
+      const x = j.routes?.[0]; if (!x) return null;
+      // The service's walking times are slow; a student walks about 5 km an hour.
+      return { km: x.distance / 1000, minutes: Math.max(1, Math.round((x.distance / 1000) / 5 * 60)), line: x.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })) };
+    } catch { return null; }
+  })());
+  return walks.get(key)!;
+}
+/** A Google Maps link with walking directions to a place, from where the phone is now, or from `from`. */
+export const directionsUrl = (to: LatLng, from?: LatLng) =>
+  `https://www.google.com/maps/dir/?api=1${from ? `&origin=${from.lat},${from.lng}` : ''}&destination=${to.lat},${to.lng}&travelmode=walking`;

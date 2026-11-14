@@ -591,23 +591,25 @@ const monthLabel = (y: number, m: number) => new Date(y, m, 1).toLocaleDateStrin
 function subscriptionOf(u: User) {
   const cfg = subConfig(); const now = new Date(); const live = u.ownerStatus === 'approved';
   const hostels = billableHostels(u.id); const fee = cfg.perHostel ? cfg.subFee * Math.max(1, hostels) : cfg.subFee;
-  const paidUntil = u.subPaidUntil ? new Date(u.subPaidUntil + 'T23:59:59') : endOfMonth(now);
-  const due = new Date(paidUntil.getFullYear(), paidUntil.getMonth() + 1, 1);
-  const overdue = live && now > paidUntil; const daysLeft = Math.ceil((+due - +now) / DAY);
+  // The subscription starts when the first hostel goes live. Before that there is nothing to pay.
+  // Never paid but listed: the first payment is due the day the first hostel went live, with the usual grace days.
+  const firstLive = getDb().hostels.filter(h => h.ownerId === u.id && (h.status === 'live' || h.status === 'suspended')).map(h => h.listedAt ?? isoNow()).sort()[0];
+  const never = !u.subPaidUntil; const started = !never || hostels > 0;
+  const start = firstLive ? new Date(new Date(firstLive).toDateString()) : new Date(now.toDateString());
+  const paidUntil = u.subPaidUntil ? new Date(u.subPaidUntil + 'T23:59:59') : new Date(+start - 1000);
+  const due = never ? start : new Date(paidUntil.getFullYear(), paidUntil.getMonth() + 1, 1);
+  const overdue = live && started && now > paidUntil; const daysLeft = Math.ceil((+due - +now) / DAY);
   const extra = u.subGraceUntil ? new Date(u.subGraceUntil + 'T23:59:59') : null;
   const graceEnd = new Date(Math.max(+due + cfg.graceDays * DAY - 1, extra ? +extra : 0));
-  const state: SubState = !live ? 'off' : !overdue ? (daysLeft <= 7 ? 'due' : 'paid') : now <= graceEnd ? 'grace' : 'late';
+  const state: SubState = !live || !started ? 'off' : !overdue ? (daysLeft <= 7 ? 'due' : 'paid') : now <= graceEnd ? 'grace' : 'late';
   const daysLate = overdue ? Math.max(1, Math.floor((+now - +due) / DAY) + 1) : 0;
   const owed = overdue ? fee * Math.max(1, (now.getFullYear() - due.getFullYear()) * 12 + now.getMonth() - due.getMonth() + 1) : 0;
   const paid = getDb().subPayments?.filter(p => p.ownerId === u.id) ?? [];
-  const history = paid.length ? paid.slice(0, 8).map(p => { const m = /(\d{4})(\d{2})$/.exec(p.ref); const label = m ? monthLabel(+m[1]!, +m[2]! - 1) : monthLabel(new Date(p.at).getFullYear(), new Date(p.at).getMonth());
-      return { month: p.months > 1 ? `${label} and ${p.months - 1} more` : label, amount: p.amount, ref: p.ref, paidOn: p.at.slice(0, 10), via: p.via }; })
-    : (() => { const out: { month: string; amount: number; ref: string; paidOn: string; via: SubPayment['via'] }[] = []; const start = u.joined ? new Date(u.joined) : new Date(now.getFullYear(), now.getMonth() - 5, 1);
-      for (let m = new Date(paidUntil.getFullYear(), paidUntil.getMonth(), 1); m >= start && out.length < 6; m = new Date(m.getFullYear(), m.getMonth() - 1, 1))
-        out.push({ month: monthLabel(m.getFullYear(), m.getMonth()), amount: fee, ref: `SUB-${u.id.slice(-4).toUpperCase()}-${m.getFullYear()}${String(m.getMonth() + 1).padStart(2, '0')}`, paidOn: iso(new Date(m.getFullYear(), m.getMonth(), 1)), via: 'app' });
-      return out; })();
+  // Receipts are only real payments. An owner who never paid has none.
+  const history = paid.slice(0, 8).map(p => { const m = /(\d{4})(\d{2})$/.exec(p.ref); const label = m ? monthLabel(+m[1]!, +m[2]! - 1) : monthLabel(new Date(p.at).getFullYear(), new Date(p.at).getMonth());
+    return { month: p.months > 1 ? `${label} and ${p.months - 1} more` : label, amount: p.amount, ref: p.ref, paidOn: p.at.slice(0, 10), via: p.via }; });
   const paused = getDb().hostels.filter(h => h.ownerId === u.id && h.pausedFor === 'subscription').length;
-  return { live, fee, hostels, paused, perHostel: cfg.perHostel, unit: cfg.subFee, paidUntil: iso(paidUntil), due: iso(due), overdue, daysLeft, daysLate, owed, state,
+  return { live, started, neverPaid: never, fee: started ? fee : 0, unitFee: fee, hostels, paused, perHostel: cfg.perHostel, unit: cfg.subFee, paidUntil: iso(paidUntil), due: iso(due), overdue, daysLeft, daysLate, owed, state,
     graceEnd: iso(graceEnd), extraUntil: u.subGraceUntil, remindedAt: u.subRemindedAt, history };
 }
 /** Puts back listings that were paused only because the subscription was unpaid. */
@@ -657,7 +659,7 @@ export function subSummary() {
   const db = getDb(); const now = new Date(); const pays = db.subPayments ?? [];
   const inMonth = (y: number, m: number) => pays.filter(p => { const d = new Date(p.at); return d.getFullYear() === y && d.getMonth() === m; }).reduce((a, p) => a + p.amount, 0);
   const trend = Array.from({ length: 6 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1); return { label: d.toLocaleDateString('en-GB', { month: 'short' }), value: inMonth(d.getFullYear(), d.getMonth()) }; });
-  const owners = db.users.filter(u => u.role === 'owner' && u.ownerStatus === 'approved').map(subscriptionOf);
+  const owners = db.users.filter(u => u.role === 'owner' && u.ownerStatus === 'approved').map(subscriptionOf).filter(s => s.started);
   const count = (st: SubState) => owners.filter(s => s.state === st).length;
   return { month: trend[5]!.value, lastMonth: trend[4]!.value, trend, expected: owners.reduce((a, s) => a + s.fee, 0), owed: owners.reduce((a, s) => a + s.owed, 0),
     owners: owners.length, paid: count('paid'), due: count('due'), grace: count('grace'), late: count('late') };

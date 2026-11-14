@@ -1,4 +1,5 @@
 import { BadgeCheck, BedDouble, Check, ChevronLeft, Flag, Clock, MapPin, QrCode, ShieldCheck, Star } from 'lucide-react';
+import { HostelLocation } from '../../components/HostelLocation';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { amenIcon } from '../../components/amenityIcons';
@@ -54,6 +55,7 @@ export function HostelPage() {
       <div className="stack-sm"><div className="row between start"><h1 style={{ fontSize: 24, lineHeight: '30px' }}>{h.name}</h1><Rating value={h.rating} count={h.nRev} /></div>
         <p className="row-sm muted small"><MapPin size={14} />{h.km} km from {universityById(h.uni)?.short} · {h.area}</p>{badges}</div>
       {sections}
+      <section className="stack-sm"><h3>Location</h3><HostelLocation h={h} height={180} /></section>
       <button className="btn btn-text btn-sm" style={{ alignSelf: 'center', color: 'var(--muted)' }} onClick={() => need('report') && setFlag(true)}><Flag size={15} />Report this listing</button>
     </main></div>
     <div className="m-cta"><div><div className="price">{ugx(r.price)}<span> / sem</span></div><div className="small muted clamp1">{r.t}</div></div>
@@ -91,6 +93,7 @@ export function HostelPage() {
           <div className="hp-block"><h3>About</h3><p className="hp-about">{h.about}</p><p className="small muted">Run by {h.ownerName} · Visitors sign in with a QR code at the gate</p></div>
           <div className="hp-block"><h3>What's included</h3>
             <div className="hp-amen">{h.amen.map(a => { const I = amenIcon(a); return <span key={a}><I size={16} />{AMENITIES[a]}</span>; })}</div></div>
+          <div className="hp-block"><h3>Location</h3><HostelLocation h={h} /></div>
           <div className="hp-block"><div className="row between"><h3>Reviews</h3>{h.nRev ? <span className="row-sm small nowrap"><Stars n={Math.round(h.rating)} size={14} /><b className="ink">{h.rating.toFixed(1)}</b><span className="muted">({h.nRev})</span></span> : null}</div>
             {data!.reviews.length ? data!.reviews.slice(0, 3).map(v => <div className="hp-review" key={v.id}>
               <div className="row between"><b className="ink small">{v.who}</b><span className="row-sm"><span className="tiny muted">{v.when}</span><button className="rv-report" onClick={() => reportReview(v)} aria-label={`Report the review by ${v.who}`} title="Report this review"><Flag size={13} /></button></span></div>

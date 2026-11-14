@@ -93,7 +93,10 @@ begin
 
   -- A subscription: the months paid start from the first unpaid month.
   select * into a from owner_accounts where owner_id = p.user_id for update;
-  base := coalesce(a.sub_paid_until, (date_trunc('month', now() at time zone 'Africa/Kampala') + interval '1 month - 1 day')::date);
+  -- Never paid: the subscription started the day the first hostel went live (same rule as the app).
+  base := coalesce(a.sub_paid_until,
+    (select min((listed_at at time zone 'Africa/Kampala')::date) - 1 from hostels where owner_id = p.user_id and status in ('live', 'suspended')),
+    (date_trunc('month', now() at time zone 'Africa/Kampala') + interval '1 month - 1 day')::date);
   until := (date_trunc('month', base) + make_interval(months => p.months + 1) - interval '1 day')::date;
   cover := (date_trunc('month', base) + interval '1 month')::date;
   ref := 'SUB-' || upper(right(p.user_id::text, 4)) || '-' || to_char(cover, 'YYYYMM');

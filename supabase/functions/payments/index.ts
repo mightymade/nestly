@@ -161,6 +161,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const months = Number(input.months); if (!Number.isInteger(months) || months < 1 || months > 12) return fail('Choose between 1 and 12 months.');
     const { data: cfg } = await db.from('config').select('*').eq('id', 1).single();
     const { count: hostels } = await db.from('hostels').select('id', { count: 'exact', head: true }).eq('owner_id', me.id).in('status', ['live', 'suspended']);
+    if (!hostels) return fail('You have no hostels on Explore yet, so there is nothing to pay.');
     const fee = cfg.per_hostel ? cfg.sub_fee * Math.max(1, hostels ?? 0) : cfg.sub_fee;
     amount = fee * months;
     Object.assign(pay, { amount, months });

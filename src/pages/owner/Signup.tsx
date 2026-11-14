@@ -1,6 +1,6 @@
 import { ChevronLeft, ArrowRight, Check, Pencil, ShieldCheck, Smartphone } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { PasswordStrength, passwordOk } from '../../components/PasswordStrength';
 import { Segmented } from '../../components/Segmented';
 import { useToast } from '../../components/Toast';
@@ -73,6 +73,7 @@ function AccountStep({ onDone }: { onDone: () => void }) {
         {!err.password && <div className="span"><PasswordStrength value={f.password} /></div>}
       </div>
       <Btn type="submit" block loading={busy}>{live ? 'Create account' : 'Text me a code'}<ArrowRight size={18} /></Btn>
+      <p className="tiny muted center">By creating an account you agree to the <Link to="/terms" target="_blank">terms of use</Link> and <Link to="/privacy" target="_blank">privacy policy</Link>.</p>
     </> : <>
       <div className="row"><span className="icon-tile primary"><Smartphone size={20} /></span><p>We sent a 6-digit code to <b>{f.phone}</b>.</p></div>
       <div className="banner primary small"><span>Demo code: <b className="num">{code}</b></span></div>

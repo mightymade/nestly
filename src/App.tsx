@@ -25,6 +25,7 @@ import { AdminUsers } from './pages/admin/Users';
 import { AdminSubscriptions } from './pages/admin/Subscriptions';
 import { VisitPage } from './pages/VisitPage';
 import { PayReturn } from './pages/PayReturn';
+import { PrivacyPage, TermsPage } from './pages/Legal';
 import { ResetPassword } from './pages/auth/ResetPassword';
 import { OwnerBookings } from './pages/owner/Bookings';
 import { HostelEditor } from './pages/owner/HostelEditor';
@@ -80,7 +81,7 @@ function AppRoutes() {
   useIsPhone(); // keeps the body class in sync
   return <Routes>
     <Route path="/" element={<Root />} />
-    <Route path="/visit/:hid" element={<VisitPage />} /><Route path="/pay/return" element={<PayReturn />} /><Route path="/reset-password" element={<ResetPassword />} />
+    <Route path="/visit/:hid" element={<VisitPage />} /><Route path="/pay/return" element={<PayReturn />} /><Route path="/privacy" element={<PrivacyPage />} /><Route path="/terms" element={<TermsPage />} /><Route path="/reset-password" element={<ResetPassword />} />
     <Route element={<GuestOnly />}><Route path="/welcome" element={<Welcome />} /><Route path="/login" element={<Login />} /><Route path="/invite" element={<Invite />} /></Route>
     <Route path="/signup" element={<SignupRoute />} />
     <Route path="/s" element={<StudentGate />}><Route element={<AppShell role="student" />}>

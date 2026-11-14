@@ -66,6 +66,7 @@ src/
     admin/           overview, reviews, hostels, users, subscriptions, flags, universities, activity
     shared/          settings and help, used by every role
     VisitPage.tsx    what a visitor's phone shows after scanning the gate QR
+    Legal.tsx        privacy policy (/privacy) and terms of use (/terms); CONTACT_EMAIL is set here
   components/        shared UI: tables, dialogs, filters, maps, money input, toasts
   services/
     api.ts           THE ONLY place screens get or change data

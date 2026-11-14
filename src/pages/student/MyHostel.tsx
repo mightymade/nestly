@@ -1,4 +1,4 @@
-import { CalendarClock, Clock, Compass, DoorOpen, Home, Phone } from 'lucide-react';
+import { CalendarClock, Clock, Compass, DoorOpen, Home, Phone , Navigation } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
@@ -7,8 +7,9 @@ import { EmptyState, ErrorState } from '../../components/States';
 import { Avatar, Skeleton } from '../../components/ui';
 import { fullDate, timeAgo } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { myHostel } from '../../services/api';
+import { myHostel , hostelPoint } from '../../services/api';
 import { useMe } from '../../services/session';
+import { directionsUrl } from '../../lib/geo';
 import { useData } from '../../services/useData';
 
 export function MyHostel() {
@@ -20,13 +21,14 @@ export function MyHostel() {
     <EmptyState icon={<Home size={24} />} title="This tab opens when you move in" text="Once the custodian checks you in, your room, stay dates and hostel notices show up here." action={<Link to="/s/explore" className="btn btn-primary"><Compass size={18} />Find a room</Link>} /></>;
   const { hostel: h, booking: b, notices, custodian, daysLeft, endLabel } = data;
 
-  const visit = h.visit.replace(/:00/g, '');
+  const visit = h.visit.replace(/:00/g, ''); const pt = hostelPoint(h);
   const hero = <div className="hero-card my-hero">
     <div className="row between start" style={{ gap: 10 }}><h2 className="my-hero-name">{h.name}</h2><Pill tone="onhero">Checked in</Pill></div>
     <div className="meta">
       <span><DoorOpen size={15} />Room {b.roomNo}</span>
       <span><Clock size={15} />Visitors {visit}</span>
       <span><CalendarClock size={15} />Ends {endLabel} · {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left</span>
+      {pt && <a href={directionsUrl(pt)} target="_blank" rel="noreferrer" className="my-hero-dir"><Navigation size={15} />Directions</a>}
     </div>
     {custodian && <div className="my-hero-cust">
       <span className="call"><Avatar user={custodian} size={28} /><span className="clamp1">{custodian.name} <span className="dim">· Custodian</span></span></span>

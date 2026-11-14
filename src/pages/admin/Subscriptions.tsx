@@ -33,6 +33,7 @@ export function subLine(s: Row['sub']) {
   if (s.state === 'late') return `${s.daysLate} ${s.daysLate === 1 ? 'day' : 'days'} late`;
   if (s.state === 'grace') return `Late, has until ${shortDate(s.graceEnd)}`;
   if (s.state === 'due') return `Due in ${s.daysLeft} ${s.daysLeft === 1 ? 'day' : 'days'}`;
+  if (s.state === 'off') return 'Starts when a hostel goes live';
   return `Paid until ${shortDate(s.paidUntil)}`;
 }
 
@@ -76,7 +77,7 @@ export function AdminSubscriptions() {
     { key: 'f', header: 'A month', cell: r => <span className="num">{ugx(r.sub.fee)}</span> },
     { key: 's', header: 'Status', cell: r => <span className="row-sm"><SubPill state={r.sub.state} /><span className="small muted nowrap">{r.sub.state === 'paid' ? `until ${shortDate(r.sub.paidUntil)}` : subLine(r.sub)}</span></span> },
     { key: 'w', header: 'Owes', cell: r => r.sub.owed ? <b className="num danger-t">{ugx(r.sub.owed)}</b> : <span className="muted">Nothing</span> },
-    { key: 'a', header: '', align: 'right', cell: r => r.sub.state === 'paid' ? null : r.sub.remindedAt && Date.now() - +new Date(r.sub.remindedAt) < 3 * 86400000
+    { key: 'a', header: '', align: 'right', cell: r => r.sub.state === 'paid' || r.sub.state === 'off' ? null : r.sub.remindedAt && Date.now() - +new Date(r.sub.remindedAt) < 3 * 86400000
       ? <span className="tiny muted nowrap">Reminded {timeAgo(r.sub.remindedAt)}</span>
       : <Btn size="sm" kind="secondary" onClick={e => { e.stopPropagation(); remind(r); }}><BellRing size={14} />Remind</Btn> },
   ];
@@ -135,17 +136,17 @@ function SubDetail({ r, onClose }: { r: Row; onClose: () => void }) {
   const remind = async () => { setBusy(true); await remindSubscription(u.id); toast(`Reminder sent to ${first}`); setBusy(false); };
   const facts: [string, string][] = [
     ['Price', `${ugx(s.fee)} a month${s.perHostel ? `, ${s.hostels || 1} ${s.hostels === 1 ? 'hostel' : 'hostels'} at ${ugx(s.unit)}` : ''}`],
-    ['Paid until', shortDate(s.paidUntil)],
-    ...(s.overdue ? [['Grace period', s.state === 'grace' ? `Ends ${shortDate(s.graceEnd)}${s.extraUntil ? ', you gave more time' : ''}` : `Ended ${shortDate(s.graceEnd)}`] as [string, string]] : [['Next due', shortDate(s.due)] as [string, string]]),
+    ['Paid until', s.neverPaid ? 'Not paid yet' : shortDate(s.paidUntil)],
+    ...(s.state === 'off' ? [['Starts', 'When their first hostel goes live'] as [string, string]] : s.overdue ? [['Grace period', s.state === 'grace' ? `Ends ${shortDate(s.graceEnd)}${s.extraUntil ? ', you gave more time' : ''}` : `Ended ${shortDate(s.graceEnd)}`] as [string, string]] : [['Next due', shortDate(s.due)] as [string, string]]),
     ['Last reminder', s.remindedAt ? timeAgo(s.remindedAt) : 'Never'],
   ];
   return <Overlay title={u.name} onClose={onClose} width={540}
     footer={<>{s.state === 'late' && r.live > 0 && <Btn kind="danger" onClick={() => setPause(true)}><Pause size={15} />Pause listings</Btn>}<span className="grow" />
-      {s.state !== 'paid' && <Btn kind="secondary" loading={busy} onClick={remind}><BellRing size={15} />Remind</Btn>}
+      {s.state !== 'paid' && s.state !== 'off' && <Btn kind="secondary" loading={busy} onClick={remind}><BellRing size={15} />Remind</Btn>}
       <Btn onClick={() => setRec(true)}><Receipt size={15} />Record payment</Btn></>}>
     <div className="stack">
       <div className={'sub-status ' + s.state}>
-        <div className="min0"><SubPill state={s.state} /><b className="ink">{s.state === 'paid' || s.state === 'due' ? subLine(s) : `${s.daysLate} ${s.daysLate === 1 ? 'day' : 'days'} late`}</b>
+        <div className="min0"><SubPill state={s.state} /><b className="ink">{s.state === 'paid' || s.state === 'due' || s.state === 'off' ? subLine(s) : `${s.daysLate} ${s.daysLate === 1 ? 'day' : 'days'} late`}</b>
           <span className="small muted">{u.phone} · {u.email}</span></div>
         {s.owed > 0 && <div className="sub-owed"><span className="tiny muted">Owes</span><b className="num">{ugx(s.owed)}</b></div>}
       </div>

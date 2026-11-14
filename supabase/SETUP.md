@@ -18,6 +18,7 @@ Run the files in this order:
 5. `0005_stage2.sql`: fair room counts, lists in the right order, and messages to admins
 6. `0006_stage3.sql`: the visitor page at the gate, removing custodians, cancelled bookings, reviews and documents
 7. `0007_payments.sql`: mobile money payments through Flutterwave
+8. `0008_live_updates.sql`: screens update by themselves, and visitor logs are deleted after 90 days
 
 If one fails, stop and send the error message. Don't run the next file.
 
