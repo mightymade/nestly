@@ -3,12 +3,13 @@ import { ArrowRight, Crosshair, LoaderCircle, MapPin, Search, X } from 'lucide-r
 import { useEffect, useRef, useState } from 'react';
 import { searchPlaces, type LatLng, type Place } from '../lib/geo';
 
-/* Map tiles from OpenStreetMap via CARTO, in a light and a dark style that follow the app theme. */
-const TILES = {
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-};
-const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>';
+/*
+ * Map tiles from OpenStreetMap itself: free and no key needed. (CARTO's tiles, used before, now need an API key.)
+ * Their rules: show the attribution, use this exact address, and keep usage light (no bulk downloading).
+ * Dark mode darkens the same tiles with a CSS filter (.lf-darktiles in components.css).
+ */
+const TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
 const theme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
 
 /** Creates a Leaflet map on a div and keeps its tiles in step with light or dark mode. */
@@ -19,8 +20,10 @@ export function useLeaflet(opts: L.MapOptions) {
     if (!el.current) return;
     const m = L.map(el.current, { attributionControl: true, zoomControl: false, ...opts });
     m.attributionControl.setPrefix(false);
-    let layer = L.tileLayer(TILES[theme()], { attribution: ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(m);
-    const mo = new MutationObserver(() => { layer.remove(); layer = L.tileLayer(TILES[theme()], { attribution: ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(m); });
+    L.tileLayer(TILE, { attribution: ATTR, maxZoom: 19 }).addTo(m);
+    const dark = () => el.current?.classList.toggle('lf-darktiles', theme() === 'dark');
+    dark();
+    const mo = new MutationObserver(dark);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(el.current);

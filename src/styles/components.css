@@ -1573,3 +1573,5 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 .legal-main a { color: var(--primary) }
 .legal-foot { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 10px }
 @media (max-width: 600px) { .legal-toc ol { columns: 1 } .legal-main h1 { font-size: 26px; line-height: 32px } }
+/* Dark mode for OpenStreetMap tiles, which only come in a light style */
+.lf-darktiles .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.6) }
