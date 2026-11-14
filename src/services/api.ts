@@ -826,13 +826,16 @@ export async function deleteRoom(rid: string) {
 /** One line of the "ready to submit" checklist. */
 export type CheckItem = { key: string; label: string; done: boolean };
 /** What a hostel still needs before it can be sent for review. */
-export function hostelChecklist(h: Hostel, roomCount: number, hasProof: boolean): CheckItem[] {
+/** Room types that have no rooms set up yet. Students could never be given a room of these types. */
+export const typesWithoutRooms = (h: Hostel, rooms: Room[]) => rooms.length ? h.rooms.filter(t => !rooms.some(r => r.type === t.t)).map(t => t.t) : [];
+export function hostelChecklist(h: Hostel, rooms: Room[], hasProof: boolean): CheckItem[] {
+  const roomCount = rooms.length;
   return [
     { key: 'basics', label: 'Name, university, booking fee and description', done: !!(h.name.trim() && h.fee > 0 && h.about.trim().length >= 20) },
     { key: 'location', label: 'Pin on the map and area name', done: !!h.location && !!h.area.trim() },
     { key: 'photos', label: 'At least 3 photos', done: (h.photos?.length ?? 0) >= 3 },
-    { key: 'types', label: 'Room types and prices', done: h.rooms.length > 0 && h.rooms.every(r => r.price > 0 && r.total > 0) },
-    { key: 'rooms', label: 'Rooms set up', done: roomCount > 0 },
+    { key: 'types', label: 'Room types and prices', done: h.rooms.length > 0 && h.rooms.every(r => r.price > 0 && (roomCount > 0 || r.total > 0)) },
+    { key: 'rooms', label: 'Rooms set up for every room type', done: roomCount > 0 && typesWithoutRooms(h, rooms).length === 0 },
     { key: 'amenities', label: 'Amenities and house rules', done: h.amen.length > 0 && (h.rules?.length ?? 0) > 0 },
     { key: 'proof', label: 'Proof of ownership', done: hasProof },
   ];
@@ -840,7 +843,7 @@ export function hostelChecklist(h: Hostel, roomCount: number, hasProof: boolean)
 /** Sends a hostel to the Nestly team. Throws ApiError if a section is missing. */
 export async function submitHostelForReview(hid: string) {
   await wait(600); await fresh(); const db = getDb(); const h = hostelById(hid)!;
-  const list = hostelChecklist(h, db.rooms.filter(r => r.hostelId === hid).length, db.docs.some(d => d.hostelId === hid));
+  const list = hostelChecklist(h, db.rooms.filter(r => r.hostelId === hid), db.docs.some(d => d.hostelId === hid));
   if (list.some(c => !c.done)) throw new ApiError('Finish every section first.');
   h.status = 'in_review'; h.submittedAt = isoNow(); h.reviewNote = undefined;
   adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing waiting for review', text: `${h.name} by ${h.ownerName}.`, to: '/a/reviews' }));

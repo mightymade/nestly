@@ -1575,3 +1575,6 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 @media (max-width: 600px) { .legal-toc ol { columns: 1 } .legal-main h1 { font-size: 26px; line-height: 32px } }
 /* Dark mode for OpenStreetMap tiles, which only come in a light style */
 .lf-darktiles .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.6) }
+/* Menus rendered on top of the page (useFloating sets their place) */
+.menu.floating { top: auto; right: auto; left: auto }
+@media (min-width: 900px) { .dfilter-pop.floating { top: auto; left: auto; right: auto; bottom: auto } }

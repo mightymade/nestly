@@ -17,7 +17,7 @@ import { fitImage } from '../../lib/art';
 import { bearing, compass, distanceKm, kmLabel, placeName, type LatLng } from '../../lib/geo';
 import { addDays, ugx, ymd } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { bookingSem, hostelSems, semBookings, semDates, semName, allUniversities, ApiError, deleteRoom, generateRooms, getOwnerHostel, hostelChecklist, hostelPoint, saveHostelDraft, submitHostelForReview, universityById, updateRoom, updateRoomTypes, uploadDoc , uniSems } from '../../services/api';
+import { typesWithoutRooms, bookingSem, hostelSems, semBookings, semDates, semName, allUniversities, ApiError, deleteRoom, generateRooms, getOwnerHostel, hostelChecklist, hostelPoint, saveHostelDraft, submitHostelForReview, universityById, updateRoom, updateRoomTypes, uploadDoc , uniSems } from '../../services/api';
 import { useData } from '../../services/useData';
 import { DocUpload, HostelPill, useOwner } from './shared';
 
@@ -40,7 +40,7 @@ export function HostelEditor() {
   const { hostel: h, rooms, docs, occupied } = data!;
   if (h.ownerId !== me.id) return <Navigate to="/o/hostels" replace />;
   const ctx: Ctx = { h, rooms, docs, occupied };
-  const check = hostelChecklist(h, rooms.length, docs.length > 0);
+  const check = hostelChecklist(h, rooms, docs.length > 0);
   const done = (k: string) => (k === 'sems' ? !!h.sems?.length : check.find(c => c.key === k)?.done);
   const left = check.filter(c => !c.done).length;
   const canSubmit = (h.status === 'draft' || h.status === 'changes_requested') && left === 0;
@@ -257,7 +257,8 @@ function Types({ h, rooms }: Ctx) {
         <label className="check small"><input type="checkbox" checked={r.sc} onChange={e => upd(i, { sc: e.target.checked })} />Own bathroom</label>
         <Segmented label="Beds per room" value={String(r.beds)} onChange={v => upd(i, { beds: +v })} options={[{ value: '1', label: '1 bed' }, { value: '2', label: '2 beds' }]} />
         <MoneyInput value={r.price} onChange={price => upd(i, { price })} aria-label="Price per semester" placeholder="950,000" />
-        {hasRooms ? <span className="small muted">{rooms.filter(x => x.type === r.t).length} rooms set up</span>
+        {hasRooms ? (rooms.some(x => x.type === r.t) ? <span className="small muted">{rooms.filter(x => x.type === r.t).length} rooms set up</span>
+          : <span className="small warn-t">No rooms yet. <Link to={`/o/hostels/${h.id}?s=rooms`}>Add them in Rooms</Link>, or remove this type.</span>)
           : <div className="input-wrap"><input className="input" inputMode="numeric" value={r.rooms} onChange={e => upd(i, { rooms: e.target.value.replace(/\D/g, '') })} aria-label="Number of rooms" placeholder="Rooms" /></div>}
       </div>
     </div>)}</div>
@@ -280,7 +281,9 @@ function RoomsSec({ h, rooms, occupied }: Ctx) {
     try { await generateRooms(h.id, g.block, g.type, +g.count, +g.floor || 1, t.beds ?? 1); toast(`${g.count} rooms added to block ${g.block.toUpperCase()}`); setG({ ...g, block: String.fromCharCode(g.block.toUpperCase().charCodeAt(0) + 1) }); }
     catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   }
+  const missing = typesWithoutRooms(h, rooms);
   return <Sec title="Rooms" sub="Each real room, so custodians can give students a room when they arrive. Only you can add or remove rooms." noSave>
+    {missing.length > 0 && <div className="banner warn small"><span>No rooms yet for <b>{missing.join(', ')}</b>. Add rooms of {missing.length === 1 ? 'that type' : 'those types'} below, or remove {missing.length === 1 ? 'it' : 'them'} under <Link to={`/o/hostels/${h.id}?s=types`}>Room types and prices</Link>. Students cannot be given a room of a type with no rooms.</span></div>}
     {!h.rooms.length ? <EmptyState bare icon={<Home size={24} />} title="Add room types first" text="Rooms are made from your room types and prices." action={<Link to={`/o/hostels/${h.id}?s=types`} className="btn btn-secondary btn-sm">Room types<ArrowRight size={15} /></Link>} />
       : <div className="gen">
         <b className="small ink">Add rooms</b>

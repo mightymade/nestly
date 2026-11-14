@@ -1,5 +1,8 @@
 import { CalendarDays, Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useIsPhone } from '../lib/useIsPhone';
+import { useFloating } from './useFloating';
 
 export type Range = { key: string; label: string; from?: string; to?: string };
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -22,10 +25,12 @@ export const inRange = (at: string | undefined, r: Range) => { if (!at) return r
 
 /** A pill that opens a small menu of periods and a custom date range. */
 export function DateFilter({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
-  const [open, setOpen] = useState(false); const box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false); const box = useRef<HTMLDivElement>(null); const pop = useRef<HTMLDivElement>(null);
+  const phone = useIsPhone(); const pos = useFloating(box, open && !phone, { minWidth: 300 });
   const [from, setFrom] = useState(value.from ?? ''); const [to, setTo] = useState(value.to ?? '');
-  useEffect(() => { if (!open) return; const off = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); }; const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', off); document.addEventListener('keydown', esc); return () => { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc); }; }, [open]);
+  useEffect(() => { if (!open) return; const off = (e: MouseEvent) => { const t = e.target as Node; if (!box.current?.contains(t) && !pop.current?.contains(t)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', off); document.addEventListener('keydown', esc, true); return () => { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc, true); }; }, [open]);
   const pick = (r: Range) => { onChange(r); setOpen(false); };
   const on = value.key !== 'all';
   const label = value.key === 'custom' ? `${value.from ? nice(value.from) : 'Start'} to ${value.to ? nice(value.to) : 'today'}` : value.label;
@@ -33,12 +38,12 @@ export function DateFilter({ value, onChange }: { value: Range; onChange: (r: Ra
     <button type="button" className={'dfilter-btn' + (on ? ' on' : '')} onClick={() => setOpen(o => !o)} aria-expanded={open} aria-haspopup="dialog">
       <CalendarDays size={16} /><span className="clamp1">{label}</span>{on ? <span className="dfilter-x" role="button" aria-label="Clear date filter" onClick={e => { e.stopPropagation(); pick(presets()[0]!); }}><X size={14} /></span> : <ChevronDown size={15} />}
     </button>
-    {open && <div className="dfilter-pop" role="dialog" aria-label="Filter by date">
+    {open && createPortal(<div ref={pop} className="dfilter-pop floating" role="dialog" aria-label="Filter by date" style={phone ? undefined : pos}>
       <ul>{presets().map(p => <li key={p.key}><button type="button" className={value.key === p.key ? 'on' : ''} onClick={() => pick(p)}><span>{p.label}</span>{p.from && <span className="tiny muted">{nice(p.from)} to {nice(p.to!)}</span>}{value.key === p.key && <Check size={15} />}</button></li>)}</ul>
       <div className="dfilter-custom"><span className="tiny strong muted">Custom dates</span>
         <div className="row-sm"><input type="date" className="input" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} aria-label="From" /><span className="muted small">to</span>
           <input type="date" className="input" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} aria-label="To" /></div>
         <button type="button" className="btn btn-primary btn-sm btn-block" disabled={!from && !to} onClick={() => pick({ key: 'custom', label: 'Custom', from: from || undefined, to: to || undefined })}>Apply dates</button></div>
-    </div>}
+    </div>, document.body)}
   </div>;
 }
