@@ -41,7 +41,7 @@ export function AdminUniversities() {
         <UniLogo uni={u} size={44} /><div className="vm-info"><div className="vm-line1"><b className="ink clamp1">{u.short}</b></div><div className="vm-line2"><span className="clamp1">{u.name}</span></div><div className="vm-line3"><code className="dom">@{u.domain}</code>{!u.sems?.length && <span className="warn-t strong">No dates</span>}</div></div>
         <Pencil size={16} className="muted" /></button>)}</div>
     : <DataTable label="Universities" noun="universities" rows={list} rowKey={u => u.id} columns={cols} onRowClick={setEdit} rowLabel={u => `Edit ${u.name}`} />;
-  const note = <p className="tiny muted">Students can only sign up with an email ending in their university’s domain. The four domains in the demo are samples; confirm each one with the university before launch.</p>;
+  const note = <p className="tiny muted">Students can only sign up with an email ending in their university’s domain. Confirm each domain with the university, because a wrong one stops its students from signing up.</p>;
   return <>
     {phone ? <><BackBar title="Universities" to="/a/settings" /><main className="m-main pushed"><div className="row end">{add}</div>{body}{note}</main></>
       : <><PageHeader title="Universities" actions={add} /><section className="card card-pad fill-card fill grow-y"><div className="card-body">{body}{note}</div></section></>}
@@ -104,7 +104,7 @@ function UniDialog({ u, onClose }: { u: University | null; onClose: () => void }
         <Field id={`us-a${i}`} label="Starts"><TextInput id={`us-a${i}`} type="date" value={x.start} onChange={e => setSem(i, { start: e.target.value })} /></Field>
         <Field id={`us-b${i}`} label="Ends"><TextInput id={`us-b${i}`} type="date" value={x.end} min={x.start || undefined} onChange={e => setSem(i, { end: e.target.value })} /></Field>
         <button type="button" className="icon-btn" onClick={() => setF(v => ({ ...v, sems: v.sems!.filter((_, j) => j !== i) }))} aria-label={`Remove semester ${i + 1}`}><Trash2 size={16} /></button>
-      </div>)}</div> : <p className="small muted">No dates yet. Owners near this university see sample dates until you add them.</p>}
+      </div>)}</div> : <p className="small muted">No dates yet. Owners near this university see Nestly's default dates until you add them.</p>}
       {err.sems && <span className="err" role="alert">{err.sems}</span>}
     </div></Overlay>;
 }

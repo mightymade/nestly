@@ -110,7 +110,7 @@ function ListingReview({ l, onDone }: { l: ListingItem; onDone: () => void }) {
     { ok: !!h.location, text: h.location ? `Pinned ${h.km} km from ${uni.short}` : 'No pin on the map' },
     { ok: !odd.length && h.rooms.length > 0, text: !h.rooms.length ? 'No room types or prices' : odd.length ? `${odd[0]!.t} at ${ugx(odd[0]!.price)} looks wrong` : 'Prices look normal for a semester' },
     { ok: h.fee >= 5000 && h.fee <= Math.max(5000, minPrice(h) / 2), text: `Booking fee ${ugx(h.fee)}${h.fee < 5000 ? ' looks too low' : h.fee > minPrice(h) / 2 ? ' is high next to the rent' : ''}` },
-    { ok: !!open && !shortSem, text: !open ? 'No semester open for booking' : shortSem ? `${semName(shortSem)} is shorter than 8 weeks` : `Taking bookings for ${semName(open)}${h.sems?.length ? '' : uniSems(h.uni) ? ', university dates' : ', sample dates'}` },
+    { ok: !!open && !shortSem, text: !open ? 'No semester open for booking' : shortSem ? `${semName(shortSem)} is shorter than 8 weeks` : `Taking bookings for ${semName(open)}${h.sems?.length ? '' : uniSems(h.uni) ? ', university dates' : ', default dates'}` },
     { ok: !!owner?.payout && sameName(owner.payout.name, owner.name), text: !owner?.payout ? 'Owner has no payment account' : sameName(owner.payout.name, owner.name) ? `Students pay ${owner.name} directly` : `Students would pay ${owner.payout.name}, not ${owner.name}` },
     { ok: l.docs.length > 0, text: l.docs.length ? 'Proof of ownership uploaded' : 'No proof of ownership' },
   ];
@@ -136,7 +136,7 @@ function ListingReview({ l, onDone }: { l: ListingItem; onDone: () => void }) {
     <h3 className="rv-h">Semester dates</h3>
     <div className="review-list">{sems.map(x => <div key={x.start} className="review-row"><div className="min0"><b className="small ink">{semName(x)}</b><span className="tiny muted">{semDates(x)}</span></div>
       {x.end < ymd() ? <Pill tone="neutral">Ended</Pill> : x.open ? <Pill tone="success">Taking bookings</Pill> : <Pill tone="neutral">Closed</Pill>}</div>)}</div>
-    <p className="tiny muted">{h.sems?.length ? 'The owner set these dates.' : uniSems(h.uni) ? `${uni.short}'s calendar. The owner has not set their own.` : `Sample dates. ${uni.short} has no calendar yet; add one under Universities.`}</p>
+    <p className="tiny muted">{h.sems?.length ? 'The owner set these dates.' : uniSems(h.uni) ? `${uni.short}'s calendar. The owner has not set their own.` : `Nestly's default dates. ${uni.short} has no calendar yet; add one under Universities.`}</p>
     <h3 className="rv-h">Map pin</h3>
     <div className="rv-map"><CampusMap uni={uni} hostels={[h]} active={null} setActive={() => {}} hover={null} setHover={() => {}} badge={false} /></div>
     <h3 className="rv-h">Proof of ownership</h3>

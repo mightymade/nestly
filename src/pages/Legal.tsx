@@ -2,6 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/ui';
+import { testPayments } from '../services/supabase';
 
 /** Where people write to about privacy, data or the terms. Change it here once Nestly has a real inbox. */
 export const CONTACT_EMAIL = 'support@nestly.app';
@@ -35,7 +36,7 @@ const mail = <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
 export function PrivacyPage() {
   return <LegalPage title="Privacy policy" other={{ to: '/terms', label: 'Terms of use' }}
     intro={<><p>Nestly helps students find and book hostels near their university, and helps hostel owners and custodians run them. To do that we need some personal information. This page says what we collect, why, who sees it, how long we keep it, and your rights.</p>
-      <p>We follow Uganda's <b>Data Protection and Privacy Act, 2019</b> and the <b>Data Protection and Privacy Regulations, 2021</b>. Nestly is a student project at Uganda Christian University and is still in test mode.</p></>}
+      <p>We follow Uganda's <b>Data Protection and Privacy Act, 2019</b> and the <b>Data Protection and Privacy Regulations, 2021</b>. Nestly is a student project at Uganda Christian University{testPayments ? ' and is still in test mode' : ''}.</p></>}
     sections={[
       { id: 'who', title: 'Who we are', body: <p>Nestly is run by a group of students at Uganda Christian University, Mukono, as part of their studies. For anything about your data, write to {mail}.</p> },
       { id: 'collect', title: 'What we collect', body: <>
@@ -87,7 +88,7 @@ export function PrivacyPage() {
 export function TermsPage() {
   return <LegalPage title="Terms of use" other={{ to: '/privacy', label: 'Privacy policy' }}
     intro={<><p>These terms are the agreement between you and Nestly when you use the website or app. By creating an account, booking a room, listing a hostel or signing in at a gate, you agree to them. Please read them, especially sections 3 and 4 about money.</p>
-      <p><b>Test mode:</b> Nestly is a student project at Uganda Christian University. While in test mode, payments are not real and no money moves.</p></>}
+      {testPayments && <p><b>Test mode:</b> Nestly is a student project at Uganda Christian University. While in test mode, payments are not real and no money moves.</p>}</>}
     sections={[
       { id: 'what', title: 'What Nestly is', body: <p>Nestly lists hostels near universities and lets students book a room by paying a booking fee. Nestly is not the landlord. The agreement to rent a room is between the student and the hostel owner, and the owner is responsible for the room, its condition and its rules.</p> },
       { id: 'accounts', title: 'Your account', body: <ul>

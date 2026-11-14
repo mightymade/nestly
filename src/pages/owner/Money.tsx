@@ -14,7 +14,7 @@ import { SearchIcon } from '../../components/SearchIcon';
 import { ugx } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { ownerMoney, paySubscription, startSubscriptionPayment } from '../../services/api';
-import { live } from '../../services/supabase';
+import { live, testPayments } from '../../services/supabase';
 import { LivePay } from '../../components/LivePay';
 import { useData } from '../../services/useData';
 import { dayDate, HostelSwitcher, Locked, maskTo, shortDate, useOwner } from './shared';
@@ -143,6 +143,6 @@ function PaySub({ fee, months, phone0, ownerId, onClose }: { fee: number; months
       <p className="small muted">{months > 1 ? `${months} months you are behind on, ${ugx(fee)} each.` : 'One month of Nestly for your hostels.'} You get a prompt on your phone to approve. Paused hostels come back straight away.</p>
       <Segmented full label="Pay with" value={m} onChange={setM} options={[{ value: 'mtn', label: 'MTN MoMo' }, { value: 'airtel', label: 'Airtel Money' }]} />
       <Field id="ps-num" label="Mobile money number" error={err}><TextInput id="ps-num" type="tel" inputMode="tel" value={num} onChange={e => { setNum(e.target.value); setErr(null); }} error={err} placeholder="0772 123 456" /></Field>
-      <p className="hint row-sm"><ShieldCheck size={13} />Test mode. No real money moves yet. {METHOD[m]}.</p>
+      <p className="hint row-sm"><ShieldCheck size={13} />{testPayments ? `Test mode. No real money moves yet. ${METHOD[m]}.` : METHOD[m]}</p>
     </div></Overlay>;
 }

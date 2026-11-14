@@ -1,6 +1,7 @@
 import { ArrowRight, Building2, Check } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { live } from '../../services/supabase';
 import { PasswordStrength, passwordOk } from '../../components/PasswordStrength';
 import { useToast } from '../../components/Toast';
 import { Art, Btn, Field, PasswordInput, TextInput } from '../../components/ui';
@@ -19,14 +20,18 @@ export function Invite() {
 }
 
 function Code({ onFound }: { onFound: (i: Inv) => void }) {
-  const [code, setCode] = useState(''); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  async function go(e: FormEvent) {
-    e.preventDefault(); if (!code.trim()) return setErr('Enter your invite code.');
+  // The owner's invite link carries the code (/invite?code=SOSO-7128): fill it in and check it straight away.
+  const [params] = useSearchParams(); const fromLink = (params.get('code') ?? '').trim().toUpperCase();
+  const [code, setCode] = useState(fromLink); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  async function check(c: string) {
+    if (!c.trim()) return setErr('Enter your invite code.');
     setBusy(true); setErr(null);
-    try { onFound(await lookupInvite(code)); } catch (x) { setErr((x as ApiError).message); } finally { setBusy(false); }
+    try { onFound(await lookupInvite(c)); } catch (x) { setErr((x as ApiError).message); } finally { setBusy(false); }
   }
+  useEffect(() => { if (fromLink) void check(fromLink); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const go = (e: FormEvent) => { e.preventDefault(); void check(code); };
   return <form className="stack" onSubmit={go} noValidate>
-    <Field id="inv-code" label="Invite code" error={err} hint="It looks like HILL-4821. Demo code: HILL-4821">
+    <Field id="inv-code" label="Invite code" error={err} hint={live ? 'It looks like SOSO-7128. The hostel owner sends it to you.' : 'It looks like HILL-4821. Demo code: HILL-4821'}>
       <TextInput id="inv-code" value={code} onChange={e => setCode(e.target.value.toUpperCase())} error={err} autoCapitalize="characters" style={{ letterSpacing: '.12em', fontWeight: 700 }} placeholder="XXXX-0000" /></Field>
     <Btn type="submit" block loading={busy}>Check code<ArrowRight size={18} /></Btn>
   </form>;

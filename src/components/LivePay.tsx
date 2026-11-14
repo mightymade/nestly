@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ugx } from '../lib/format';
 import { ApiError, confirmPayment, sendPaymentCode, type PayResult } from '../services/api';
 import { Btn, Field, TextInput } from './ui';
+import { testPayments } from '../services/supabase';
 
 const NET = { mtn: 'MTN MoMo', airtel: 'Airtel Money' } as const;
 /** How long to keep checking before asking the person to check again themselves. */
@@ -56,7 +57,7 @@ export function LivePay({ start, amount, phone, method, onPaid, onFailed }: {
     <h2>Enter the code</h2><p className="muted">{p.next.note ?? 'Enter the code sent to your phone.'}</p>
     <Field id="pay-otp" label="Code" error={otpErr}><TextInput id="pay-otp" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, '')); setOtpErr(null); }} error={otpErr} maxLength={8} autoFocus /></Field>
     <Btn type="submit" block loading={busy} disabled={otp.length < 4}>Confirm {ugx(amount)}</Btn>
-    <p className="hint">Test mode: the code is always 123456.</p></form>;
+    {testPayments && <p className="hint">Test mode: the code is always 123456.</p>}</form>;
   return <div className="center stack">{head}
     <h2>{stale ? 'Still waiting for the payment' : 'Check your phone and enter your PIN'}</h2>
     <p className="muted">{stale ? 'We have not heard back yet. Approve the prompt if you have not, then check again. You are never charged twice.' : (p.next?.note ?? `Approve ${ugx(amount)} on the ${NET[method]} prompt sent to ${phone}.`)}</p>

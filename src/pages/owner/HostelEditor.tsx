@@ -344,7 +344,7 @@ function Sems({ h }: Ctx) {
   }
   const today = ymd();
   return <Sec title="Semester dates" sub="When students move in and out. Students book one semester at a time, and only semesters you open take bookings." dirty={dirty} busy={busy} onSave={go} onReset={() => { setList(start); setErr(null); }}>
-    {!h.sems?.length && <div className="banner primary small"><Info size={16} className="ic" /><span className="grow">{uniSems(h.uni) ? `These are ${uni?.short ?? 'the university'}'s dates, set by Nestly.` : 'These are sample dates. Your university has not set its calendar yet.'} Change them if your move-in days are different, then save.</span>
+    {!h.sems?.length && <div className="banner primary small"><Info size={16} className="ic" /><span className="grow">{uniSems(h.uni) ? `These are ${uni?.short ?? 'the university'}'s dates, set by Nestly.` : "These are Nestly's default dates. Your university has not set its calendar yet."} Change them if your move-in days are different, then save.</span>
       <Btn size="sm" kind="secondary" onClick={() => save({ sems: list }, false)}>Use these dates</Btn></div>}
     <div className="sem-list">{list.map((s, i) => { const n = semBookings(h.id, s); const past = s.end < today;
       return <div key={i} className={'sem-card' + (s.open && !past ? ' open' : '') + (past ? ' past' : '')}>

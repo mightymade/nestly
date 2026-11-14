@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Clock, LogIn, LogOut, Printer, Search, ShieldCheck, Smartphone } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Copy, LogIn, LogOut, Printer, Search, ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Overlay } from '../../components/Overlay';
 import { useToast } from '../../components/Toast';
@@ -9,6 +9,8 @@ import { qrSvg } from '../../lib/art';
 import { LOGO_SVG } from '../../components/LogoMark';
 import { findResidents, getVisit, hostelById, signInVisitor, signOutVisitor } from '../../services/api';
 import { useMe } from '../../services/session';
+import { live } from '../../services/supabase';
+import { copyText } from '../../lib/format';
 import { useData } from '../../services/useData';
 
 export const useHostelId = () => useMe().hostelId!;
@@ -150,12 +152,14 @@ function printPoster(hostel: string, visit: string, url: string) {
 }
 
 export function GateQR({ onClose }: { onClose: () => void }) {
-  const me = useMe(); const hid = me.hostelId!; const h = hostelById(hid)!;
+  const me = useMe(); const hid = me.hostelId!; const h = hostelById(hid)!; const toast = useToast();
   const [view, setView] = useState<'qr' | 'visitor'>('qr');
   const url = visitUrl(hid); const print = () => printPoster(h.name, h.visit, url);
   if (view === 'visitor') return <Overlay title="What a visitor sees" onClose={onClose} width={440}><VisitorScreen hid={hid} onDone={() => setView('qr')} /></Overlay>;
   return <Overlay title="Gate QR code" onClose={onClose} width={440}
-    footer={<><Btn kind="secondary" onClick={() => setView('visitor')}><Smartphone size={16} />Try it</Btn><Btn onClick={print}><Printer size={16} />Print poster</Btn></>}>
+    footer={<>{live
+      ? <Btn kind="secondary" onClick={async () => toast((await copyText(url)) ? 'Visitor link copied' : 'Could not copy the link.')}><Copy size={16} />Copy link</Btn>
+      : <Btn kind="secondary" onClick={() => setView('visitor')}><Smartphone size={16} />Try it</Btn>}<Btn onClick={print}><Printer size={16} />Print poster</Btn></>}>
     <div className="gq">
       <div className="gq-card"><div className="qr" dangerouslySetInnerHTML={{ __html: qrSvg(url) }} /><b>{h.name}</b><span className="tiny muted">Visitors, scan to sign in</span></div>
       <ul className="gq-tips"><li><Printer size={15} />Print it on A4 and stick it at the gate, at eye level.</li><li><Smartphone size={15} />Visitors scan it with their phone camera to sign in and out.</li><li><Clock size={15} />Visiting hours on the poster: {h.visit}.</li></ul>

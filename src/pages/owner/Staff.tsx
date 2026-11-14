@@ -65,13 +65,15 @@ function InviteDialog({ hostels, start, onClose }: { hostels: Hostel[]; start: s
   const [busy, setBusy] = useState(false); const [code, setCode] = useState<string | null>(null);
   const h = hostels.find(x => x.id === f.hid)!;
   async function go() { setBusy(true); setErr({}); try { setCode(await inviteCustodian(f.hid, f.name, f.contact)); } catch (x) { const a = x as ApiError; setErr({ [a.field ?? 'name']: a.message }); } finally { setBusy(false); } }
-  const msg = code && `Hello ${f.name.split(' ')[0]}, you are invited to work as custodian at ${h.name} on Nestly. Open nestly.app, choose "I have an invite code" and enter ${code}. The code works for 7 days.`;
+  // The link opens the invite screen with the code already filled in, on whatever address Nestly is running at.
+  const link = code && `${window.location.origin}/invite?code=${encodeURIComponent(code)}`;
+  const msg = code && `Hello ${f.name.split(' ')[0]}, you are invited to work as custodian at ${h.name} on Nestly. Open this link to set up your account: ${link}\nYour invite code is ${code} if it asks. It works for 7 days.`;
   if (code) return <Overlay title="Invite ready" onClose={onClose} width={440} footer={<Btn onClick={onClose}>Done</Btn>}>
     <div className="stack center">
-      <p className="muted">Share this code with {f.name.split(' ')[0]}. It works for 7 days.</p>
+      <p className="muted">Send {f.name.split(' ')[0]} the link. It opens the invite screen with this code already filled in, and works for 7 days.</p>
       <div className="code-big num">{code}</div>
       <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-        <Btn kind="secondary" size="sm" onClick={async () => toast((await copyText(code)) ? 'Code copied' : 'Could not copy. Select the code instead.')}><Copy size={15} />Copy</Btn>
+        <Btn kind="secondary" size="sm" onClick={async () => toast((await copyText(msg!)) ? 'Invite message copied' : 'Could not copy. Select the code instead.')}><Copy size={15} />Copy message</Btn>
         <a className="btn btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(msg!)}`} target="_blank" rel="noreferrer"><MessageCircle size={15} />Share on WhatsApp</a>
       </div></div></Overlay>;
   return <Overlay title="Invite a custodian" onClose={onClose} width={460} footer={<><Btn kind="secondary" onClick={onClose}>Cancel</Btn><Btn loading={busy} onClick={go}><UserPlus size={15} />Create invite</Btn></>}>

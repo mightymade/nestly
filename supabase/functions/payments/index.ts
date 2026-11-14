@@ -14,7 +14,7 @@
 // Supabase provides SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY automatically.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.119.0';
 
-type Env = { url: string; serviceKey: string; clientId: string; clientSecret: string; base?: string; tokenUrl?: string };
+type Env = { url: string; serviceKey: string; clientId: string; clientSecret: string; base?: string; tokenUrl?: string; scenario?: string };
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -52,14 +52,32 @@ async function accessToken(env: Env): Promise<string> {
   token = { value: j.access_token, until: Date.now() + (Number(j.expires_in ?? 300) - 60) * 1000 };
   return token.value;
 }
-async function flw(env: Env, method: string, path: string, body?: unknown) {
+/** Live keys go to production; without FLW_BASE_URL the function talks to Flutterwave's sandbox. */
+const isSandbox = (env: Env) => !env.base || /sandbox/i.test(env.base);
+/**
+ * Sandbox only (developer.flutterwave.com/v4/docs/testing, "Mobile Money"): the sandbox's default mobile money flow is a
+ * phone notification that no real phone receives, so the charge stays pending. "scenario:auth_redirect" makes Flutterwave
+ * return a test approval page instead; Nestly opens it and the person comes back to /pay/return.
+ * FLW_SCENARIO in the function secrets overrides this. Live keys never send a scenario.
+ */
+const scenarioOf = (env: Env) => (isSandbox(env) ? (env.scenario?.trim() || 'scenario:auth_redirect') : '');
+async function flw(env: Env, method: string, path: string, body?: unknown, base?: string, extra: Record<string, string> = {}) {
   const id = crypto.randomUUID();
-  const r = await fetch((env.base ?? 'https://developersandbox-api.flutterwave.com') + path, {
-    method, headers: { Authorization: `Bearer ${await accessToken(env)}`, 'Content-Type': 'application/json', 'X-Trace-Id': id, 'X-Idempotency-Key': id },
+  const r = await fetch((base ?? env.base ?? 'https://developersandbox-api.flutterwave.com') + path, {
+    method, headers: { Authorization: `Bearer ${await accessToken(env)}`, 'Content-Type': 'application/json', 'X-Trace-Id': id, 'X-Idempotency-Key': id, ...extra },
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
+  // One line per call in Supabase > Edge Functions > payments > Logs, to see what Flutterwave answered. No keys or phone numbers.
+  console.log(`flutterwave ${method} ${path.replace(/\?.*$/, '')} -> http ${r.status}, ${j.status ?? '-'}, charge ${j.data?.status ?? '-'}, next ${j.data?.next_action?.type ?? '-'}${j.status !== 'success' ? `, says: ${JSON.stringify(j.error ?? j.message ?? j).slice(0, 300)}` : ''}`);
   return { ok: r.ok && j.status === 'success', data: j.data, message: (j.error?.message ?? j.message) as string | undefined };
+}
+/** Reads a charge. Flutterwave's own sandbox guide reads charges from a second address, so that one is tried if the first fails. */
+async function getCharge(env: Env, id: string) {
+  const path = `/charges/${encodeURIComponent(id)}`;
+  const v = await flw(env, 'GET', path);
+  if (v.ok || env.base) return v;
+  return flw(env, 'GET', path, undefined, 'https://api.flutterwave.cloud/developersandbox');
 }
 /** What the person has to do next, in a form the app can show: approve on the phone, type a code, or open a page. */
 function nextStep(charge: Record<string, any>) {
@@ -81,7 +99,7 @@ async function settle(db: SupabaseClient, env: Env, txRef: string) {
       cancel_until: b?.cancel_until, paid_until: a?.sub_paid_until };
   }
   if (!p.flw_id) return { result: 'pending', kind: p.kind, hostel_id: p.hostel_id };
-  const v = await flw(env, 'GET', `/charges/${encodeURIComponent(p.flw_id)}`); const c = v.data;
+  const v = await getCharge(env, p.flw_id); const c = v.data;
   if (v.ok && c?.reference === txRef && c.status === 'succeeded') {
     const { data, error } = await db.rpc('finish_payment', { p_tx_ref: txRef, p_flw_id: String(c.id), p_flw_ref: String(c.id), p_amount: Math.floor(Number(c.amount)), p_currency: String(c.currency) });
     if (error) return { result: 'failed', error: error.message };
@@ -172,12 +190,13 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   const [first, ...rest] = String(me.name ?? '').trim().split(/\s+/);
   let res;
   try {
+    const scenario = scenarioOf(env); if (scenario) console.log(`sandbox scenario: ${scenario}`);
     res = await flw(env, 'POST', '/orchestration/direct-charges', {
       amount, currency: 'UGX', reference: txRef, redirect_url: `${back}/pay/return?tx_ref=${txRef}`,
       payment_method: { type: 'mobile_money', mobile_money: { country_code: '256', network: network.toUpperCase(), phone_number: local } },
       customer: { email: me.email, name: { first: first || 'Nestly', last: rest.join(' ') || 'User' }, phone: { country_code: '256', number: local } },
       meta: { kind: String(input.kind), user_id: me.id },
-    });
+    }, undefined, scenario ? { 'X-Scenario-Key': scenario } : {});
   } catch (e) { res = { ok: false, data: null, message: (e as Error).message }; }
   if (!res.ok || !res.data?.id) {
     await db.rpc('fail_payment', { p_tx_ref: txRef });
@@ -194,4 +213,6 @@ if (typeof Deno !== 'undefined') Deno.serve(req => handle(req, {
   url: Deno.env.get('SUPABASE_URL')!, serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   // @ts-ignore Deno
   clientId: Deno.env.get('FLW_CLIENT_ID') ?? '', clientSecret: Deno.env.get('FLW_CLIENT_SECRET') ?? '', base: Deno.env.get('FLW_BASE_URL') ?? undefined,
+  // @ts-ignore Deno
+  scenario: Deno.env.get('FLW_SCENARIO') ?? undefined,
 }));
