@@ -1578,3 +1578,10 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 /* Menus rendered on top of the page (useFloating sets their place) */
 .menu.floating { top: auto; right: auto; left: auto }
 @media (min-width: 900px) { .dfilter-pop.floating { top: auto; left: auto; right: auto; bottom: auto } }
+/* Street or satellite button on every map */
+.lf-style { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 10px; border-radius: 12px; background: var(--surface); color: var(--ink); font: 600 13px/1 inherit; font-family: inherit; box-shadow: var(--shadow, 0 4px 14px rgba(17,19,33,.12)); cursor: pointer; border: 0; margin: 12px 12px 0 0 !important }
+.lf-style:hover { background: var(--surface-2) }
+.lf-style svg { color: var(--primary); flex: none }
+.lf-satellite .cmap-ring { stroke: #fff; stroke-opacity: .9 }
+.lf-satellite .cmap-ring-label { background: rgba(17,19,33,.7); color: #fff }
+.lf-satellite .hl-straight, .lf-satellite .hl-route { stroke: #fff }
