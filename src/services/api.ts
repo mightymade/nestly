@@ -3,11 +3,11 @@
  * like a real network call, so loading states are designed from day one.
  * Swap the bodies for Supabase calls later; keep the names and return shapes.
  */
-import type { Invite, Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
+import type { Visitor, Invite, Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
 import { addDays, nowTime, sleep, ymd } from '../lib/format';
 import { storage } from '../lib/storage';
 import { clearAndReload, commit, getDb, onFreshData, reload } from './db';
-import { authUid, friendly } from './remote';
+import { authUid, friendly, presentDocs, storedDocUrl } from './remote';
 import { live, sb, siteUrl } from './supabase';
 import { bearing, distanceKm, offset, type LatLng } from '../lib/geo';
 
@@ -40,7 +40,7 @@ export const semBookings = (hid: string, s: Semester) => getDb().bookings.filter
 export const bookingSem = (h: Hostel) => { const today = ymd(); return hostelSems(h).find(s => s.open && s.end >= today) ?? null; };
 
 import { ApiError } from './errors';
-import { removeHostelPhotos, uploadHostelPhotos } from './files';
+import { removeDocFile, removeHostelPhotos, uploadDocFile, uploadHostelPhotos } from './files';
 export { ApiError };
 
 const safe = (u: User): User => ({ ...u, password: '' });
@@ -280,6 +280,8 @@ export async function toggleSaved(userId: string, hid: string) {
 export async function listSaved(userId: string) { await wait(300); return (savedIds(userId).map(hostelById).filter(Boolean) as Hostel[]).filter(isLive); }
 
 /* ---------- Bookings ---------- */
+/** Shown until mobile money payments are connected to real data. */
+const PAYMENTS_SOON = 'Paying by mobile money is not switched on yet. Try again soon.';
 export async function listBookings(userId: string) {
   await wait(350);
   return getDb().bookings.filter(b => b.userId === userId).slice().reverse().map(b => ({ ...b, hostel: hostelById(b.hostelId)! }));
@@ -288,6 +290,7 @@ export async function listBookings(userId: string) {
 export const hasBookingFor = (userId: string, sem: string) => getDb().bookings.some(b => b.userId === userId && b.sem === sem && b.status !== 'cancelled');
 /** Books a room and takes the booking fee by mobile money. Takes student, hostel, room type index, phone and network. Returns the booking. The fee goes straight to the owner. Throws ApiError if the payment fails or the room is gone. */
 export async function createBooking(userId: string, hid: string, roomIdx: number, phone: string, method: 'mtn' | 'airtel') {
+  if (live) throw new ApiError(PAYMENTS_SOON);
   await wait(2200);
   const u = getDb().users.find(x => x.id === userId)!; const h = hostelById(hid)!; const r = h.rooms[roomIdx]!;
   if (!u.emailVerified) throw new ApiError('Confirm your student email before booking.');
@@ -322,7 +325,7 @@ export async function cancelBooking(bid: string) {
 /** Adds the student's stars and review after a stay. */
 export async function rateBooking(bid: string, stars: number, text: string, who: string) {
   await wait(600); const db = getDb(); const b = db.bookings.find(x => x.id === bid)!;
-  db.reviews.unshift({ id: id('v'), hostelId: b.hostelId, who, stars, when: new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }), text: text || 'No comment.' });
+  db.reviews.unshift({ id: id('v'), hostelId: b.hostelId, userId: b.userId, bookingId: b.id, who, stars, when: new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }), text: text || 'No comment.' });
   b.status = 'rated'; hostelById(b.hostelId)!.nRev++; await commit();
 }
 
@@ -362,12 +365,43 @@ export async function custodianDay(hostelId: string) {
 }
 /** Today's visitors at a hostel, newest first. */
 export async function listVisitors(hostelId: string) { await wait(300); return getDb().visitors.filter(v => v.hostelId === hostelId).slice().reverse(); }
+/** True when the signed-in person runs this hostel (custodian, owner or admin), so they see its tenants and visitors. */
+const isStaffOf = (hostelId: string) => { const me = sessionUser(); const h = hostelById(hostelId);
+  return !!me && (me.role === 'admin' || (me.role === 'custodian' && me.hostelId === hostelId) || (!!h && h.ownerId === me.id)); };
+const visitorFromRow = (r: Record<string, unknown>): Visitor => ({ id: String(r.id), hostelId: String(r.hostel_id), name: String(r.name), room: String(r.room), host: (r.host as string) ?? undefined,
+  phone: (r.phone as string) ?? undefined, tin: String(r.tin), tout: (r.tout as string) ?? null, via: r.via as Visitor['via'], date: String(r.date) });
+/** "Who are you visiting?": residents whose name or room matches. Visitors at the gate only see matches after typing two letters. */
+export async function findResidents(hostelId: string, q: string): Promise<{ id: string; name: string; room: string }[]> {
+  const s = q.trim().toLowerCase();
+  if (live && !isStaffOf(hostelId)) {
+    if (s.length < 2) return [];
+    const { data, error } = await sb!.rpc('search_residents', { p_hostel: hostelId, p_q: s }); if (error) throw new ApiError(friendly(error));
+    return (data ?? []) as { id: string; name: string; room: string }[];
+  }
+  await wait(120);
+  return getDb().tenants.filter(t => t.hostelId === hostelId && t.status === 'in' && t.roomId && (!s || `${t.name} ${t.room}`.toLowerCase().includes(s)))
+    .sort((a, b) => a.name.localeCompare(b.name)).map(t => ({ id: t.id, name: t.name, room: t.room }));
+}
 /** Signs a visitor in, from the gate QR or by the custodian. Takes name, room, who they visit and phone. Returns the visitor. */
 export async function signInVisitor(hostelId: string, input: { name: string; room: string; host?: string; phone?: string }, via: 'QR' | 'Custodian') {
+  if (live && !isStaffOf(hostelId)) {
+    const { data, error } = await sb!.rpc('visitor_sign_in', { p_hostel: hostelId, p_name: input.name, p_room: input.room, p_host: input.host ?? '', p_phone: input.phone ?? '' });
+    if (error) throw new ApiError(friendly(error)); return visitorFromRow(data as Record<string, unknown>);
+  }
   await wait(500); const v = { id: id('vs'), hostelId, ...input, tin: nowTime(), tout: null, via, date: todayIso() }; getDb().visitors.push(v); await commit(); return v;
 }
+/** A visitor's own pass, for the gate page on their phone. Returns null if the visit is over or unknown. */
+export async function getVisit(vid: string): Promise<Visitor | null> {
+  if (live) { const { data } = await sb!.rpc('visitor_pass', { p_id: vid }); const r = data as Record<string, unknown> | null; return r?.id ? visitorFromRow(r) : null; }
+  return getDb().visitors.find(x => x.id === vid) ?? null;
+}
 /** Marks a visitor as left. */
-export async function signOutVisitor(vid: string) { await wait(300); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = nowTime(); await commit(); }
+export async function signOutVisitor(vid: string) {
+  if (live && !getDb().visitors.some(x => x.id === vid)) {
+    const { error } = await sb!.rpc('visitor_sign_out', { p_id: vid }); if (error) throw new ApiError(friendly(error)); return;
+  }
+  await wait(300); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = nowTime(); await commit();
+}
 /** Puts a visitor back inside, for the Undo button. */
 export async function undoSignOut(vid: string) { await wait(150); const v = getDb().visitors.find(x => x.id === vid)!; v.tout = null; await commit(); }
 /** Every tenant of a hostel: arriving, staying and left. */
@@ -565,6 +599,7 @@ function addMonths(u: User, months: number, via: SubPayment['via'], note?: strin
 }
 /** The owner pays their subscription by mobile money for a number of months. Paused hostels come back. Returns the new subscription state. */
 export async function paySubscription(ownerId: string, months = 1) {
+  if (live) throw new ApiError(PAYMENTS_SOON);
   await wait(900); const u = getDb().users.find(x => x.id === ownerId)!;
   addMonths(u, months, 'app');
   audit('Paid subscription', u.name, `${months} month${months > 1 ? 's' : ''}`); await commit(); return subscriptionOf(u);
@@ -668,18 +703,26 @@ export async function signupOwner(input: { name: string; phone: string; email: s
   db.users.push(u); storage.set(SESSION, u.id); await commit(); return safe(u);
 }
 /** Saves an uploaded ID, selfie or proof of ownership. Takes the owner, kind, file name and file data. */
-export async function uploadDoc(ownerId: string, kind: VerificationDoc['kind'], fileName: string, url: string, hostelId?: string) {
-  await wait(900); const db = getDb();
-  db.docs = db.docs.filter(d => !(d.ownerId === ownerId && d.kind === kind && d.hostelId === hostelId));
-  const d: VerificationDoc = { id: id('d'), ownerId, hostelId, kind, fileName, url, uploadedAt: isoNow(), status: 'pending' };
-  db.docs.push(d); await commit(); return d;
+export async function uploadDoc(ownerId: string, kind: VerificationDoc['kind'], fileName: string, url: string, hostelId?: string, file?: File) {
+  await wait(live ? 0 : 900); const db = getDb(); const did = id('d');
+  // Live data: the file goes to private storage first. PDFs are uploaded as they are; images already shrunk.
+  const stored = live ? await uploadDocFile(ownerId, did, fileName, url, url ? undefined : file) : url;
+  const old = db.docs.filter(d => d.ownerId === ownerId && d.kind === kind && d.hostelId === hostelId);
+  db.docs = db.docs.filter(d => !old.includes(d));
+  const d: VerificationDoc = { id: did, ownerId, hostelId, kind, fileName, url: stored, uploadedAt: isoNow(), status: 'pending' };
+  db.docs.push(d); await commit();
+  if (live) { await presentDocs([d]); for (const o of old) await removeDocFile(storedDocUrl(o)); }
+  return d;
 }
 /** The documents an owner uploaded. */
 export const docsOf = (ownerId: string) => getDb().docs.filter(d => d.ownerId === ownerId);
 /** Saves the bank or mobile money account students pay into. Asks for the password when changing an existing account. */
 export async function savePayout(ownerId: string, payout: NonNullable<User['payout']>, password?: string) {
   await wait(500); const u = getDb().users.find(x => x.id === ownerId)!;
-  if (password !== undefined && u.password !== password) throw new ApiError('That password is not right.', 'password');
+  if (password !== undefined) {
+    const ok = live ? !(await sb!.auth.signInWithPassword({ email: u.email, password })).error : u.password === password;
+    if (!ok) throw new ApiError('That password is not right.', 'password');
+  }
   if (payout.method !== 'bank' && !/^0?7\d{8}$/.test(payout.to.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit mobile money number.', 'to');
   if (!payout.name.trim()) throw new ApiError('Enter the name on the account.', 'name');
   u.payout = payout; await commit(); return safe(u);
@@ -885,6 +928,7 @@ export async function cancelInvite(code: string) { await wait(300); const i = ge
 /** Removes a custodian from a hostel. */
 export async function removeCustodian(userId: string) {
   await wait(500); const db = getDb(); const u = db.users.find(x => x.id === userId)!; const h = hostelById(u.hostelId ?? '');
+  if (live) { const { error } = await sb!.rpc('remove_custodian', { p_user: userId }); if (error) throw new ApiError(friendly(error)); }
   u.suspended = true; u.suspendReason = 'Removed by the owner';
   audit('Removed custodian', h?.name ?? '', u.name);
   notify(h?.ownerId, { kind: 'staff', title: `${u.name} was removed`, text: `They can no longer open ${h?.name}.`, to: '/o/staff' });
@@ -1011,7 +1055,9 @@ export async function restoreUser(userId: string) {
 }
 /** Admin sends someone a password reset link. */
 export async function sendResetLink(userId: string) {
-  await wait(500); const u = getDb().users.find(x => x.id === userId)!; audit('Sent password reset link', u.name, u.email); await commit(); return u.email;
+  await wait(500); const u = getDb().users.find(x => x.id === userId)!;
+  if (live) { const { error } = await sb!.auth.resetPasswordForEmail(u.email, { redirectTo: siteUrl() + '/reset-password' }); if (error) throw new ApiError(friendly(error)); }
+  audit('Sent password reset link', u.name, u.email); await commit(); return u.email;
 }
 /** A student reports a listing, a review or a payment problem. Owners can report a review. Notifies the admins. */
 export async function reportListing(userId: string, hid: string, reason: string, text: string, more: { kind?: FlagKind; reviewId?: string; bookingId?: string } = {}) {

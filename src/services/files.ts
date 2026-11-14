@@ -30,3 +30,30 @@ export async function removeHostelPhotos(before: string[], after: string[]) {
   const gone = before.filter(p => !after.includes(p)).map(pathOf).filter((x): x is string => !!x);
   if (gone.length) await sb!.storage.from(BUCKET).remove(gone).catch(() => undefined);
 }
+
+/* ---------- Owner documents (private) ---------- */
+const DOCS = 'docs';
+/** How a document's file is stored in the database: "storage:" and its path in the private docs bucket. */
+export const DOC_PREFIX = 'storage:';
+const safeName = (n: string) => n.replace(/[^\w.-]+/g, '-').slice(-60) || 'file';
+
+/** Uploads an ID, selfie or ownership paper into the owner's own folder. Returns the value to save as the document's url. */
+export async function uploadDocFile(ownerId: string, docId: string, fileName: string, dataUrl: string, file?: File): Promise<string> {
+  const blob = file ?? await dataUrlToBlob(dataUrl);
+  const path = `${ownerId}/${docId}-${safeName(fileName)}`;
+  const { error } = await sb!.storage.from(DOCS).upload(path, blob, { contentType: blob.type || 'application/octet-stream' });
+  if (error) throw new ApiError(/security|Unauthorized/i.test(error.message) ? 'You can only upload your own documents.' : friendly(error));
+  return DOC_PREFIX + path;
+}
+/** Short-lived links to view private documents, for the owner and admins. Takes stored urls, returns a map from stored url to link. */
+export async function docLinks(stored: string[]): Promise<Map<string, string>> {
+  const paths = stored.filter(u => u.startsWith(DOC_PREFIX)).map(u => u.slice(DOC_PREFIX.length));
+  const out = new Map<string, string>(); if (!paths.length) return out;
+  const { data } = await sb!.storage.from(DOCS).createSignedUrls(paths, 60 * 60 * 6);
+  for (const d of data ?? []) if (d.path && d.signedUrl) out.set(DOC_PREFIX + d.path, d.signedUrl);
+  return out;
+}
+/** Deletes a replaced document's file. Failures are ignored. */
+export async function removeDocFile(stored: string) {
+  if (stored.startsWith(DOC_PREFIX)) await sb!.storage.from(DOCS).remove([stored.slice(DOC_PREFIX.length)]).catch(() => undefined);
+}

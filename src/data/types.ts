@@ -36,7 +36,7 @@ export interface Hostel {
   submittedAt?: string; listedAt?: string;
 }
 export type HostelStatus = 'draft' | 'in_review' | 'live' | 'changes_requested' | 'suspended';
-export interface Review { id: string; hostelId: string; who: string; stars: number; when: string; text: string; reply?: string; /** Hidden by an admin after a report. */ hidden?: boolean }
+export interface Review { id: string; hostelId: string; /** The student who wrote it and the stay it is about. */ userId?: string; bookingId?: string; who: string; stars: number; when: string; text: string; reply?: string; /** Hidden by an admin after a report. */ hidden?: boolean }
 
 export type BookingStatus = 'paid' | 'checked-in' | 'completed' | 'rated' | 'cancelled';
 export interface Booking { id: string; userId: string; hostelId: string; room: string; roomNo?: string; sem: string; fee: number; status: BookingStatus; paidOn: string; cancelUntil?: string; at?: string; payRef?: string }
@@ -51,7 +51,8 @@ export interface Notification { id: string; userId: string; kind: 'booking' | 'p
 export interface Invite { code: string; hostelId: string; invitedBy: string; email: string; name: string; used: boolean; at?: string; cancelled?: boolean }
 export interface Mail { id: string; to: string; subject: string; body: string; token?: string; when: string }
 
-export interface VerificationDoc { id: string; ownerId: string; hostelId?: string; kind: 'national_id' | 'selfie' | 'ownership' | 'trading_licence'; fileName: string; url: string; uploadedAt: string; status: 'pending' | 'accepted' | 'rejected'; note?: string }
+export interface VerificationDoc { id: string; ownerId: string; hostelId?: string; kind: 'national_id' | 'selfie' | 'ownership' | 'trading_licence'; fileName: string; url: string; uploadedAt: string; status: 'pending' | 'accepted' | 'rejected'; note?: string;
+  /** Live data only: a short-lived link to open a PDF. Images use `url`. */ link?: string }
 export interface Payout { id: string; ownerId: string; amount: number; method: 'mtn' | 'airtel' | 'bank'; to: string; status: 'scheduled' | 'paid'; date: string; bookings: string[] }
 export interface AuditEntry { id: string; at: string; actorId: string; actorRole: Role; action: string; target: string; detail: string }
 export type FlagKind = 'listing' | 'review' | 'payment';

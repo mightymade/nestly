@@ -7,17 +7,13 @@ import type { Visitor } from '../../data/types';
 import { closingMin, nowMin, t12 } from '../../lib/visitTime';
 import { qrSvg } from '../../lib/art';
 import { LOGO_SVG } from '../../components/LogoMark';
-import { hostelById, listTenants, listVisitors, signInVisitor, signOutVisitor } from '../../services/api';
+import { findResidents, getVisit, hostelById, signInVisitor, signOutVisitor } from '../../services/api';
 import { useMe } from '../../services/session';
 import { useData } from '../../services/useData';
 
 export const useHostelId = () => useMe().hostelId!;
 
 /** Residents a visitor can choose from. Only people currently living here. */
-function useResidents(hid: string) {
-  const { data } = useData(() => listTenants(hid), [hid]);
-  return (data ?? []).filter(t => t.status === 'in' && t.roomId).sort((a, b) => a.name.localeCompare(b.name));
-}
 type Host = { name: string; room: string };
 
 /**
@@ -25,9 +21,11 @@ type Host = { name: string; room: string };
  * after typing two letters, so nobody can scroll a full list of who lives in which room.
  */
 export function HostPicker({ hid, id, value, onChange, error, showAll = false }: { hid: string; id: string; value: Host | null; onChange: (h: Host | null) => void; error?: string | null; showAll?: boolean }) {
-  const people = useResidents(hid); const [q, setQ] = useState('');
-  const s = q.trim().toLowerCase();
-  const list = s.length >= 2 || (showAll && !s) ? people.filter(t => !s || `${t.name} ${t.room}`.toLowerCase().includes(s)).slice(0, 6) : [];
+  const [q, setQ] = useState('');
+  const s = q.trim().toLowerCase(); const want = s.length >= 2 || (showAll && !s);
+  // With real data, a visitor's phone asks the server, which only answers after two letters.
+  const { data } = useData(() => (want ? findResidents(hid, s) : Promise.resolve([])), [hid, s, want]);
+  const list = (data ?? []).slice(0, 6);
   if (value) return <div className={'host-chosen' + (error ? ' bad' : '')}>
     <Avatar user={{ name: value.name }} size={38} />
     <span className="grow min0"><b className="ink clamp1">{value.name}</b><span className="small muted">Room {value.room}</span></span>
@@ -76,11 +74,15 @@ export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: 
   const close = closingMin(h.visit); const open = close === null || nowMin() < close;
   const phoneOk = phoneValid(f.phone);
   useEffect(() => { if (!remember) return; let id: string | null = null; try { id = localStorage.getItem(visitKey(hid)); } catch { /* storage blocked */ }
-    if (id) listVisitors(hid).then(vs => { const v = vs.find(x => x.id === id && !x.tout); if (v) setDone(v); }); }, [hid, remember]);
+    if (id) getVisit(id).then(v => { if (v && !v.tout) setDone(v); }).catch(() => undefined); }, [hid, remember]);
   const keep = (v: Visitor | null) => { if (!remember) return; try { v ? localStorage.setItem(visitKey(hid), v.id) : localStorage.removeItem(visitKey(hid)); } catch { /* storage blocked */ } };
   const ready = f.name.trim().split(/\s+/).length >= 2 && !!f.host && phoneOk && f.ok;
   const [tried, setTried] = useState(false);
-  async function go(e: FormEvent) { e.preventDefault(); setTried(true); if (!ready) return; setBusy(true); const v = await signInVisitor(hid, { name: f.name.trim(), room: f.host!.room, host: f.host!.name, phone: f.phone.trim() }, 'QR'); keep(v); setDone(v); setBusy(false); }
+  async function go(e: FormEvent) {
+    e.preventDefault(); setTried(true); if (!ready) return; setBusy(true);
+    try { const v = await signInVisitor(hid, { name: f.name.trim(), room: f.host!.room, host: f.host!.name, phone: f.phone.trim() }, 'QR'); keep(v); setDone(v); }
+    catch (x) { toast((x as Error).message); } finally { setBusy(false); }
+  }
   return <div className="visitor-phone"><div className="screen">
     <div className="vp-head">
       <div className="vp-brand"><span className="vp-thumb"><Art hostel={h} /></span><span className="min0"><b className="clamp1">{h.name}</b><span>Visitor sign-in</span></span></div>
@@ -96,7 +98,7 @@ export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: 
           <div className="vp-pass-grid"><div><span className="tiny muted">Room</span><b className="ink">{done.room}</b></div><div><span className="tiny muted">Time in</span><b className="ink">{t12(done.tin)}</b></div><div><span className="tiny muted">Visitor</span><b className="ink clamp1">{done.name.split(' ')[0]}</b></div></div>
         </div>
         <p className="tiny muted center">Show this screen at the gate if asked. Scan the same code when you leave.</p>
-        <Btn block onClick={async () => { await signOutVisitor(done.id); keep(null); setLeft(true); toast('Visitor signed out'); }}><LogOut size={16} />Sign out now</Btn>
+        <Btn block onClick={async () => { try { await signOutVisitor(done.id); setLeft(true); toast('Visitor signed out'); } catch (x) { toast((x as Error).message); } keep(null); }}><LogOut size={16} />Sign out now</Btn>
         <button type="button" className="btn btn-text btn-sm" onClick={onDone}>Done</button></div>
       : <form className="vp-body" onSubmit={go} noValidate>
         {!open && <div className="banner warn small"><AlertTriangle size={15} className="ic" /><span>Visiting hours are over. You can still sign in, but the custodian may ask you to leave.</span></div>}

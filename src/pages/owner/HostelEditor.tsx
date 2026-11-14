@@ -387,7 +387,7 @@ function Proof({ h, docs }: Ctx) {
   return <Sec title="Proof of ownership" sub="Shows the hostel is yours to rent out. Only the Nestly team sees this." noSave>
     <Segmented full label="Document type" value={kind} onChange={setKind} options={[{ value: 'title', label: 'Land title' }, { value: 'licence', label: 'Trading licence' }, { value: 'lc1', label: 'LC1 letter' }]} />
     <DocUpload label={LABEL[kind]} hint="A clear photo or scan of the whole page. The owner’s name must be readable." doc={docs.find(d => d.kind === (kind === 'licence' ? 'trading_licence' : 'ownership'))}
-      onFile={async (n, u) => { await uploadDoc(me.id, kind === 'licence' ? 'trading_licence' : 'ownership', `${LABEL[kind]}: ${n}`, u, h.id); }} />
+      onFile={async (n, u, f) => { await uploadDoc(me.id, kind === 'licence' ? 'trading_licence' : 'ownership', `${LABEL[kind]}: ${n}`, u, h.id, f); }} />
     {docs.length > 0 && <p className="small muted row-sm"><FileCheck2 size={15} color="var(--success)" />{docs.length} {docs.length === 1 ? 'document' : 'documents'} uploaded for this hostel.</p>}
   </Sec>;
 }

@@ -90,8 +90,8 @@ function IdentityStep({ onDone }: { onBack: null; onDone: () => void }) {
   return <div className="stack">
     {me.ownerStatus === 'rejected' && me.ownerNote && <div className="banner warn"><span><b>Please fix this:</b> {me.ownerNote}</span></div>}
     <div className="doc-pair">
-      <DocUpload label="National ID, front side" hint="All four corners, no glare." doc={doc('national_id')} accept="image/jpeg,image/png" onFile={async (n, u) => { await uploadDoc(me.id, 'national_id', n, u); }} />
-      <DocUpload label="A selfie" hint="Clear face, good light." doc={doc('selfie')} accept="image/jpeg,image/png" onFile={async (n, u) => { await uploadDoc(me.id, 'selfie', n, u); }} />
+      <DocUpload label="National ID, front side" hint="All four corners, no glare." doc={doc('national_id')} accept="image/jpeg,image/png" onFile={async (n, u, f) => { await uploadDoc(me.id, 'national_id', n, u, undefined, f); }} />
+      <DocUpload label="A selfie" hint="Clear face, good light." doc={doc('selfie')} accept="image/jpeg,image/png" onFile={async (n, u, f) => { await uploadDoc(me.id, 'selfie', n, u, undefined, f); }} />
     </div>
     <p className="tiny muted row-sm"><ShieldCheck size={14} />Kept private under Uganda's Data Protection and Privacy Act, 2019.</p>
     <Btn block disabled={!ok} onClick={onDone}>Continue<ArrowRight size={18} /></Btn>

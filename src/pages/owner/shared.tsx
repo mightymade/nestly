@@ -29,7 +29,7 @@ const MAX = 5 * 1024 * 1024;
 const OK = ['image/jpeg', 'image/png', 'application/pdf'];
 /** Upload box for ID, selfie and ownership papers. Images are shrunk and previewed; PDFs show their name. */
 export function DocUpload({ label, hint, doc, onFile, accept = 'image/jpeg,image/png,application/pdf' }: {
-  label: string; hint: string; doc?: VerificationDoc; onFile: (name: string, url: string) => Promise<void>; accept?: string;
+  label: string; hint: string; doc?: VerificationDoc; onFile: (name: string, url: string, file: File) => Promise<void>; accept?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false); const [pct, setPct] = useState(0); const [err, setErr] = useState<string | null>(null);
@@ -39,14 +39,14 @@ export function DocUpload({ label, hint, doc, onFile, accept = 'image/jpeg,image
     if (f.size > MAX) return setErr('That file is over 5 MB. Take a smaller photo or scan.');
     setBusy(true); setPct(8);
     const tick = setInterval(() => setPct(p => Math.min(92, p + 9)), 90);
-    try { const url = f.type === 'application/pdf' ? '' : await fitImage(f, 900); await onFile(f.name, url); setPct(100); }
+    try { const url = f.type === 'application/pdf' ? '' : await fitImage(f, 900); await onFile(f.name, url, f); setPct(100); }
     catch (x) { setErr((x as Error).message); } finally { clearInterval(tick); setBusy(false); if (input.current) input.current.value = ''; }
   }
   const isPdf = doc && !doc.url;
   return <div className="doc-up">
     <div className="doc-label"><b className="ink">{label}</b><span className="tiny muted">{hint}</span></div>
     {doc && !busy ? <div className="doc-has">
-      <div className="doc-thumb">{isPdf ? <FileText size={28} /> : <img src={doc.url} alt={label} />}</div>
+      <div className="doc-thumb">{isPdf ? (doc.link ? <a href={doc.link} target="_blank" rel="noreferrer" aria-label={`Open ${label}`}><FileText size={28} /></a> : <FileText size={28} />) : <img src={doc.url} alt={label} />}</div>
       <div className="min0 grow"><b className="clamp1 small ink">{doc.fileName}</b>
         <span className="tiny muted row-sm">{doc.status === 'accepted' ? <Pill tone="success">Accepted</Pill> : doc.status === 'rejected' ? <Pill tone="danger">Rejected</Pill> : <><Clock size={12} />In review</>}</span>
         {doc.note && <span className="tiny danger-t">{doc.note}</span>}</div>

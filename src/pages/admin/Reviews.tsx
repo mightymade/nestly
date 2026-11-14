@@ -57,7 +57,7 @@ export function AdminReviews() {
 function DocView({ d }: { d: VerificationDoc }) {
   const [zoom, setZoom] = useState(false);
   return <figure className="rv-doc">
-    <button onClick={() => d.url && setZoom(true)} aria-label={`Open ${DOC_NAME[d.kind]} larger`} disabled={!d.url}>{d.url ? <><img src={d.url} alt={DOC_NAME[d.kind]} /><span className="zoom"><ZoomIn size={15} /></span></> : <span className="pdf"><FileText size={28} />PDF file</span>}</button>
+    <button onClick={() => (d.url ? setZoom(true) : d.link && window.open(d.link, '_blank', 'noopener'))} aria-label={`Open ${DOC_NAME[d.kind]} larger`} disabled={!d.url && !d.link}>{d.url ? <><img src={d.url} alt={DOC_NAME[d.kind]} /><span className="zoom"><ZoomIn size={15} /></span></> : <span className="pdf"><FileText size={28} />{d.link ? 'Open PDF' : 'PDF file'}</span>}</button>
     <figcaption><b className="small ink">{DOC_NAME[d.kind]}</b><span className="tiny muted clamp1">{d.fileName}</span></figcaption>
     {zoom && <Overlay title={DOC_NAME[d.kind]} onClose={() => setZoom(false)} width={820}><img src={d.url} alt={DOC_NAME[d.kind]} style={{ width: '100%', borderRadius: 12 }} /></Overlay>}
   </figure>;

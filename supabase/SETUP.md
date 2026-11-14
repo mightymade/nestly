@@ -16,10 +16,11 @@ Run the files in this order:
 3. `0003_storage.sql`: buckets for hostel photos and owner documents
 4. `0004_starting_data.sql`: the four universities and the subscription price
 5. `0005_stage2.sql`: fair room counts, lists in the right order, and messages to admins
+6. `0006_stage3.sql`: the visitor page at the gate, removing custodians, cancelled bookings, reviews and documents
 
 If one fails, stop and send the error message. Don't run the next file.
 
-If you already ran the first four, just run `0005_stage2.sql`. When a new numbered file appears in a later update, run only the new one.
+If you already ran the earlier files, run only the ones you have not run yet. When a new numbered file appears in a later update, run only the new one.
 
 ### Optional: sample data
 

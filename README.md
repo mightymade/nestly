@@ -71,7 +71,7 @@ src/
     api.ts           THE ONLY place screens get or change data
     db.ts            the in-memory data: demo data in localStorage, or live data from Supabase
     remote.ts        live mode: loads what each person may see from Supabase and saves their changes back
-    files.ts         live mode: uploads hostel photos to Supabase storage
+    files.ts         live mode: hostel photos (public) and owner documents (private) in Supabase storage
     supabase.ts      the Supabase client and the switch between real and demo data
     session.tsx      who is logged in
     useData.ts       loads data and reloads after a change
@@ -110,12 +110,4 @@ Every exported function in `src/services/api.ts` has a short comment above it: w
 - Functions are `async` and wait a little on purpose (`wait(...)`), so loading states already work.
 - Errors are thrown as `ApiError(message, field?)`. Forms show `message` under the field named by `field`. Keep that pattern.
 - `commit()` saves the fake database and tells screens to reload. A real backend can replace it with refetching.
-- Things that are fake today and need real work:
-  - logins and sessions
-  - email sending
-  - mobile money payments (MTN and Airtel)
-  - owner subscriptions
-  - file uploads (photos, IDs)
-  - view and save counts
-  - notifications
-  - the activity log
+- With real data (Supabase), everything works except money: booking a room and paying the subscription show "not switched on yet" until Flutterwave payments are added. Subscription payments the admin records by hand do work.

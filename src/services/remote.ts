@@ -11,9 +11,10 @@
  * Server rules and triggers (supabase/migrations) are the real guard. This file only avoids
  * sending writes that would be refused anyway.
  */
-import type { Config, DB, User } from '../data/types';
+import type { Config, DB, User, VerificationDoc } from '../data/types';
 import { ymd } from '../lib/format';
 import { ApiError } from './errors';
+import { DOC_PREFIX, docLinks } from './files';
 import { sb } from './supabase';
 
 type Row = Record<string, unknown>;
@@ -81,13 +82,26 @@ function rowsOf(db: DB): Record<string, Row[]> {
     visitors: db.visitors.map(x => toRow('visitors', x as never)),
     notices: db.notices.map(x => toRow('notices', x as never)),
     invites: db.invites.map(x => toRow('invites', x as never)),
-    docs: db.docs.map(x => toRow('docs', x as never)),
+    docs: db.docs.map(x => toRow('docs', { ...x, url: docStored.get(x.id) ?? x.url } as never)),
     flags: db.flags.map(x => toRow('flags', x as never)),
     sub_payments: db.subPayments.map(x => toRow('sub_payments', x as never)),
     notifications: db.notifications.map(x => toRow('notifications', x as never)),
     audit: db.audit.map(x => toRow('audit', x as never)),
   };
 }
+/** Documents kept in private storage: document id to the stored value ("storage:path"). On screen, url holds a short-lived link instead. */
+const docStored = new Map<string, string>();
+/** Swaps stored document paths for links that can be shown. PDFs get `link` and an empty url, as screens treat no url as a PDF. */
+export async function presentDocs(docs: VerificationDoc[]) {
+  const mine = docs.filter(d => d.url.startsWith(DOC_PREFIX)); if (!mine.length) return;
+  const links = await docLinks(mine.map(d => d.url));
+  for (const d of mine) {
+    docStored.set(d.id, d.url); const l = links.get(d.url);
+    if (/\.pdf$/i.test(d.fileName)) { d.url = ''; d.link = l; } else d.url = l ?? '';
+  }
+}
+/** What the database holds as a document's file (a storage path), whatever link the screen shows. */
+export const storedDocUrl = (d: VerificationDoc) => docStored.get(d.id) ?? d.url;
 /** Owners whose private account row this person can see (themselves, or everyone for admins). */
 let ownerAccountIds = new Set<string>();
 
@@ -168,6 +182,7 @@ export async function load(empty: () => DB): Promise<DB> {
   db.invites = invites.map(r => fromRow(r)); db.docs = docs.map(r => fromRow(r)); db.flags = flags.map(r => fromRow(r));
   db.subPayments = subs.map(r => fromRow(r)); db.audit = audit.map(r => fromRow(r));
   db.saved = {}; for (const r of saved) (db.saved[r.user_id as string] ??= []).push(r.hostel_id as string);
+  await presentDocs(db.docs);
   me = db.users.find(u => u.id === authUid) ?? null;
   takeSnapshot(db);
   return db;
@@ -204,7 +219,9 @@ async function pushNow(db: DB) {
   for (const w of writes) {
     // Server-kept counts and dates are left out of updates so the browser never overwrites them.
     const strip = (r: Row) => { const x = { ...r }; if (w.t === 'hostels') { delete x.views; delete x.saves; delete x.rating; delete x.n_rev; } return x; };
-    if (w.inserts.length) { const { error } = await c.from(w.t).insert(w.inserts.map(strip)); if (error) throw new RemoteError(friendly(error)); }
+    // New rows: empty fields are left out so the database fills in its defaults (like "not hidden").
+    const noNulls = (r: Row) => Object.fromEntries(Object.entries(strip(r)).filter(([, v]) => v !== null));
+    if (w.inserts.length) { const { error } = await c.from(w.t).insert(w.inserts.map(noNulls), { defaultToNull: false }); if (error) throw new RemoteError(friendly(error)); }
     for (const r of w.updates) {
       const patch = strip(r); if (Object.keys(patch).every(k => keys(w.t).includes(k))) continue;
       let q = c.from(w.t).update(patch); for (const k of keys(w.t)) q = q.eq(k, r[k] as string);
@@ -237,4 +254,4 @@ async function pushNow(db: DB) {
 export function rebase(db: DB) { takeSnapshot(db); }
 
 /** Forgets snapshot state, used when signing out. */
-export function resetRemote() { authUid = null; me = null; snap = new Map(); ownerAccountIds = new Set(); }
+export function resetRemote() { authUid = null; me = null; snap = new Map(); ownerAccountIds = new Set(); docStored.clear(); }
