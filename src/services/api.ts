@@ -4,7 +4,7 @@
  * Swap the bodies for Supabase calls later; keep the names and return shapes.
  */
 import type { Visitor, Invite, Config, FlagKind, FlagOutcome, SubPayment, Semester, AuditEntry, Booking, Flag, Hostel, HostelStatus, Mail, Notification, Room, RoomType, Tenant, University, User, VerificationDoc } from '../data/types';
-import { addDays, nowTime, sleep, ymd } from '../lib/format';
+import { addDays, nowTime, sleep, ugx, ymd } from '../lib/format';
 import { storage } from '../lib/storage';
 import { clearAndReload, commit, getDb, onFreshData, reload } from './db';
 import { authUid, friendly, presentDocs, storedDocUrl } from './remote';
@@ -330,7 +330,7 @@ export async function createBooking(userId: string, hid: string, roomIdx: number
   if (ph.endsWith('0000')) throw new ApiError('The payment was declined. You were not charged. Check your balance, then try again.');
   r.taken++;
   const d = new Date(); const until = new Date(d.getTime() + 48 * 3600e3);
-  const b: Booking = { id: 'NST-' + (32100 + Math.floor(Math.random() * 800)), userId, hostelId: hid, room: r.t, sem: SEM, fee: h.fee, status: 'paid', at: d.toISOString(),
+  const b: Booking = { id: 'NST-' + (32100 + Math.floor(Math.random() * 800)), userId, hostelId: hid, room: r.t, sem: SEM, fee: h.fee, status: 'paid', rent: r.price, rentPaidOn: null, at: d.toISOString(),
     payRef: `${method === 'mtn' ? 'MP' : 'AM'}${String(Date.now()).slice(-6)}.${Math.floor(1000 + Math.random() * 8999)}`,
     paidOn: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }), cancelUntil: until.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) };
   getDb().bookings.push(b);
@@ -340,6 +340,25 @@ export async function createBooking(userId: string, hid: string, roomIdx: number
   notify(h.ownerId, { kind: 'booking', title: `New booking at ${h.name}`, text: `${u.name} booked a ${r.t.toLowerCase()} room for ${SEM}.`, to: '/o/bookings' });
   custodiansOf(hid).forEach(c => notify(c.id, { kind: 'tenant', title: `${u.name} needs a room`, text: `Booked a ${r.t.toLowerCase()} room. Give them a room on the Rooms page.`, to: '/c/rooms' }));
   syncTypeCounts(hid); await commit(); return b;
+}
+/** Rent for the semester: fixed when the student booked, or the room type's price for older bookings. */
+export const rentTotal = (b: Booking) => b.rent ?? hostelById(b.hostelId)?.rooms.find(r => r.t === b.room)?.price ?? 0;
+/** What the student still pays at check-in: the semester rent less the booking fee they already paid. */
+export const balanceDue = (b: Booking) => Math.max(0, rentTotal(b) - b.fee);
+/** The booking behind a tenant, if any. */
+export const bookingOfTenant = (t: Tenant) => getDb().bookings.find(x => x.id === t.bookingId);
+/**
+ * True while the balance has not been collected, so the custodian cannot check the student in yet.
+ * In live mode this only applies once the database has the rent column (migration 0009), so `rent` must exist on the booking.
+ */
+export const balanceOwed = (b?: Booking | null) => !!b && b.status === 'paid' && (!live || b.rent !== undefined) && !b.rentPaidOn && balanceDue(b) > 0;
+/** The custodian confirms they received the balance. After this the student can be checked in. Takes the tenant. Returns the booking. */
+export async function recordRentPayment(tid: string) {
+  await wait(400); const db = getDb(); const t = db.tenants.find(x => x.id === tid)!; const b = db.bookings.find(x => x.id === t.bookingId);
+  if (!b) throw new ApiError('This tenant has no booking.');
+  b.rent = b.rent ?? rentTotal(b); b.rentPaidOn = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  notify(b.userId, { kind: 'money', title: 'Rent received', text: `${hostelById(b.hostelId)?.name} received your balance of ${ugx(balanceDue(b))}. You can move in.`, to: '/s/bookings' });
+  await commit(); return b;
 }
 /** Cancels a booking and frees the room. The owner sends the fee back. Returns the booking. */
 export async function cancelBooking(bid: string) {
@@ -435,9 +454,10 @@ export async function listTenants(hostelId: string) { await wait(300); return ge
 /** Checks a tenant in or out. */
 export async function setTenantStatus(tid: string, status: 'in' | 'out') {
   await wait(400); const db = getDb(); const t = db.tenants.find(x => x.id === tid)!;
-  if (status === 'in' && !t.roomId) throw new ApiError(`Give ${t.name.split(' ')[0]} a room first.`);
-  t.status = status;
   const b = db.bookings.find(x => x.id === t.bookingId);
+  if (status === 'in' && !t.roomId) throw new ApiError(`Give ${t.name.split(' ')[0]} a room first.`);
+  if (status === 'in' && balanceOwed(b)) throw new ApiError(`${t.name.split(' ')[0]} still owes ${ugx(balanceDue(b!))}. Collect the balance before checking them in.`);
+  t.status = status;
   if (status === 'in' && b) { b.status = 'checked-in'; b.roomNo = t.room; }
   if (status === 'out') {
     t.end = 'Left ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });

@@ -8,7 +8,7 @@ import { pinIcon, uniIcon, useLeaflet } from './maps';
 
 /**
  * Where a hostel is: a small street map with the hostel and the campus, the walking route between them,
- * how long the walk takes, and links that open walking directions in Google Maps.
+ * how long the walk takes, and a link that opens walking directions from the hostel to the campus in Google Maps.
  */
 export function HostelLocation({ h, height = 200 }: { h: Hostel; height?: number }) {
   const uni = universityById(h.uni); const p = hostelPoint(h);
@@ -40,8 +40,8 @@ export function HostelLocation({ h, height = 200 }: { h: Hostel; height?: number
     </div>
     {!exact && <p className="tiny muted">Approximate spot. The owner has not pinned the exact building yet.</p>}
     <div className="hl-acts">
-      <a className="btn btn-secondary btn-sm" href={directionsUrl(p)} target="_blank" rel="noreferrer"><Navigation size={15} />Directions</a>
-      {uni && <a className="btn btn-text btn-sm" href={directionsUrl(p, uni)} target="_blank" rel="noreferrer">Walk from {uni.short}</a>}
+      {/* Directions run from the hostel to the university. directionsUrl(to, from). */}
+      <a className="btn btn-secondary btn-sm" href={uni ? directionsUrl(uni, p) : directionsUrl(p)} target="_blank" rel="noreferrer"><Navigation size={15} />Directions{uni ? ` to ${uni.short}` : ''}</a>
     </div>
   </div>;
 }

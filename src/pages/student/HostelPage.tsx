@@ -1,6 +1,5 @@
 import { BadgeCheck, BedDouble, Check, ChevronLeft, Flag, Clock, MapPin, QrCode, ShieldCheck, Star } from 'lucide-react';
-import { HostelLocation } from '../../components/HostelLocation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { amenIcon } from '../../components/amenityIcons';
 import { Card } from '../../components/Card';
@@ -47,7 +46,7 @@ export function HostelPage() {
   const badges = <div className="row wrap" style={{ gap: 8 }}>{h.verified && <Pill tone="primary"><BadgeCheck size={13} />Verified owner</Pill>}<Pill tone="neutral">Booking fee {ugx(h.fee)}</Pill></div>;
 
   if (phone) return <>
-    <div className="m-hero"><Art hostel={h} />
+    <div className="m-hero"><PhoneGallery key={h.id} h={h} />
       <button className="float left" onClick={back} aria-label="Back"><ChevronLeft size={22} /></button>
       <SaveButton userId={me?.id} hostel={h} saved={saved} className="float right" />
     </div>
@@ -55,7 +54,6 @@ export function HostelPage() {
       <div className="stack-sm"><div className="row between start"><h1 style={{ fontSize: 24, lineHeight: '30px' }}>{h.name}</h1><Rating value={h.rating} count={h.nRev} /></div>
         <p className="row-sm muted small"><MapPin size={14} />{h.km} km from {universityById(h.uni)?.short} · {h.area}</p>{badges}</div>
       {sections}
-      <section className="stack-sm"><h3>Location</h3><HostelLocation h={h} height={180} /></section>
       <button className="btn btn-text btn-sm" style={{ alignSelf: 'center', color: 'var(--muted)' }} onClick={() => need('report') && setFlag(true)}><Flag size={15} />Report this listing</button>
     </main></div>
     <div className="m-cta"><div><div className="price">{ugx(r.price)}<span> / sem</span></div><div className="small muted clamp1">{r.t}</div></div>
@@ -77,7 +75,7 @@ export function HostelPage() {
       <SaveButton userId={me?.id} hostel={h} saved={saved} className="round-btn" />
     </header>
 
-    <div className="hp fill">
+    <div className="hp">
       <section className="card hp-media" aria-label="Photos and key facts">
         <Gallery h={h} />
         <div className="hp-facts">
@@ -93,7 +91,6 @@ export function HostelPage() {
           <div className="hp-block"><h3>About</h3><p className="hp-about">{h.about}</p><p className="small muted">Run by {h.ownerName} · Visitors sign in with a QR code at the gate</p></div>
           <div className="hp-block"><h3>What's included</h3>
             <div className="hp-amen">{h.amen.map(a => { const I = amenIcon(a); return <span key={a}><I size={16} />{AMENITIES[a]}</span>; })}</div></div>
-          <div className="hp-block"><h3>Location</h3><HostelLocation h={h} /></div>
           <div className="hp-block"><div className="row between"><h3>Reviews</h3>{h.nRev ? <span className="row-sm small nowrap"><Stars n={Math.round(h.rating)} size={14} /><b className="ink">{h.rating.toFixed(1)}</b><span className="muted">({h.nRev})</span></span> : null}</div>
             {data!.reviews.length ? data!.reviews.slice(0, 3).map(v => <div className="hp-review" key={v.id}>
               <div className="row between"><b className="ink small">{v.who}</b><span className="row-sm"><span className="tiny muted">{v.when}</span><button className="rv-report" onClick={() => reportReview(v)} aria-label={`Report the review by ${v.who}`} title="Report this review"><Flag size={13} /></button></span></div>
@@ -116,13 +113,14 @@ export function HostelPage() {
           })}</div></div>
         <div className="hp-sum">
           <div><span className="muted">Semester</span><span>{sem ? <>{semName(sem)}<span className="tiny muted" style={{ display: 'block', textAlign: 'right' }}>{semDates(sem)}</span></> : 'Not taking bookings'}</span></div>
-          <div><span className="muted">Booking fee, pay now</span><span className="num">{ugx(h.fee)}</span></div>
-          <div><span className="muted">Rent, pay at check-in</span><span className="num">{ugx(r.price)}</span></div>
+          <div><span className="muted">Rent for the semester</span><span className="num">{ugx(r.price)}</span></div>
+          <div><span className="muted">Booking fee, pay now (counts toward rent)</span><span className="num">{ugx(h.fee)}</span></div>
+          <div style={{ borderTop: '1px dashed var(--bar-muted)', paddingTop: 10, fontWeight: 800 }}><span>Balance, pay at check-in</span><span className="num">{ugx(Math.max(0, r.price - h.fee))}</span></div>
         </div>
         <ol className="hp-steps">
-          <li><span><b>Pay the booking fee</b> with Mobile Money to hold your room.</span></li>
-          <li><span><b>The custodian confirms</b> and gives you a room number.</span></li>
-          <li><span><b>Pay rent at check-in</b> and move in.</span></li>
+          <li><span><b>Pay the booking fee</b> with Mobile Money. It is taken off your rent.</span></li>
+          <li><span><b>The custodian gives you a room</b> and a room number.</span></li>
+          <li><span><b>Pay the balance</b> (rent less the fee). You check in once it is paid.</span></li>
         </ol>
         </div>
         <div className="hp-cta">
@@ -137,6 +135,27 @@ export function HostelPage() {
 
 function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return <div className="hp-fact"><span className="icon-tile sm primary">{icon}</span><span className="min0"><span className="tiny muted">{label}</span><b className="clamp1">{value}</b></span></div>;
+}
+
+/** Phone photo strip: swipe left and right between photos (native scroll snapping), with dots and a counter. */
+function PhoneGallery({ h }: { h: Hostel }) {
+  const count = Math.max(1, h.photos?.length || 3);
+  const [at, setAt] = useState(0); const ref = useRef<HTMLDivElement>(null);
+  const onScroll = () => {
+    const el = ref.current; if (!el) return;
+    const i = Math.min(count - 1, Math.max(0, Math.round(el.scrollLeft / Math.max(1, el.clientWidth))));
+    if (i !== at) setAt(i);
+  };
+  const go = (i: number) => { const el = ref.current; if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' }); };
+  return <>
+    <div className="m-gal" ref={ref} onScroll={onScroll} role="group" aria-label="Hostel photos. Swipe to see more.">
+      {Array.from({ length: count }, (_, i) => <div className="m-slide" key={i}><Art hostel={h} alt={i} /></div>)}
+    </div>
+    {count > 1 && <>
+      <span className="m-count" aria-hidden="true">{at + 1} / {count}</span>
+      {count <= 8 && <div className="m-dots">{Array.from({ length: count }, (_, i) => <button key={i} type="button" className={i === at ? 'on' : ''} onClick={() => go(i)} aria-label={`Photo ${i + 1} of ${count}`} aria-current={i === at} />)}</div>}
+    </>}
+  </>;
 }
 
 function Gallery({ h }: { h: Hostel }) {

@@ -24,12 +24,12 @@ export function Login() {
     catch (x) { const a = x as ApiError; setErr({ field: a.field, msg: a.message }); } finally { setBusy(false); }
   }
   const fill = (a: string) => { setId(a); setPw('nestly123'); setErr(null); setDemo(false); };
-  return <AuthLayout title="Log in" sub="Students use their student email. Custodians and owners can use their username." back="/welcome" ownerLink={false}>
+  return <AuthLayout title="Log in" sub="Students use their student email. Custodians and owners can use their username." back="/welcome" ownerLink={false} centered>
     <form className="stack" onSubmit={submit} noValidate>
       <Field id="login-id" label="Email or username" error={err?.field === 'id' ? err.msg : null}>
         <TextInput id="login-id" autoComplete="username" value={idv} onChange={e => setId(e.target.value)} error={err?.field === 'id' ? err.msg : null} placeholder="you@ucu.ac.ug or username" /></Field>
       <div className="rel"><Field id="login-pw" label="Password" error={err?.field === 'password' ? err.msg : null}>
-        <PasswordInput id="login-pw" autoComplete="current-password" value={pw} onChange={e => setPw(e.target.value)} error={err?.field === 'password' ? err.msg : null} /></Field>
+        <PasswordInput id="login-pw" autoComplete="current-password" placeholder="••••••••" value={pw} onChange={e => setPw(e.target.value)} error={err?.field === 'password' ? err.msg : null} /></Field>
         <button type="button" className="field-aside" onClick={() => setForgot(true)}>Forgot password?</button></div>
       <Btn type="submit" block loading={busy}><LogIn size={18} />Log in</Btn>
       <p className="small muted login-alt">New here? <Link to="/signup">Create a student account</Link><span aria-hidden="true">·</span><Link to="/owner/signup">List a hostel</Link></p>
