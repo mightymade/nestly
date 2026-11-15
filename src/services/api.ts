@@ -68,9 +68,10 @@ async function liveLogin(idOrEmail: string, password: string) {
   u.lastActive = isoNow(); await commit().catch(() => undefined);
   return safe(u);
 }
-/** Live mode sign up. Supabase emails a confirmation link that brings the person back to `back`, signed in. */
-async function liveSignUp(email: string, password: string, back: string, meta: Record<string, unknown>) {
-  const { data, error } = await sb!.auth.signUp({ email, password, options: { emailRedirectTo: siteUrl() + back, data: meta } });
+/** Live mode sign up. Supabase emails a confirmation link that brings the person to the login page. */
+async function liveSignUp(email: string, password: string, _back: string, meta: Record<string, unknown>) {
+  // The confirmation link lands on /confirmed, which signs the person out and sends them to the login page.
+  const { data, error } = await sb!.auth.signUp({ email, password, options: { emailRedirectTo: siteUrl() + '/confirmed', data: meta } });
   if (error) {
     if (/registered|exists/i.test(error.message)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
     if (/password/i.test(error.message)) throw new ApiError('Choose a stronger password: 8 or more characters with letters and numbers.', 'password');
@@ -152,9 +153,9 @@ export async function signupStudent(input: { uniId: string; name: string; email:
   return safe(u);
 }
 /** Sends the sign-up confirmation email again, to an address that has not confirmed yet. */
-export async function resendConfirmation(email: string, back = '/s/explore') {
+export async function resendConfirmation(email: string, _back = '/s/explore') {
   if (!live) { const u = getDb().users.find(x => x.email === email); if (u) await resendVerification(u.id); return; }
-  const { error } = await sb!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: siteUrl() + back } });
+  const { error } = await sb!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: siteUrl() + '/confirmed' } });
   if (error) throw new ApiError(/rate|seconds/i.test(error.message) ? 'Wait a minute before asking for another email.' : friendly(error));
 }
 /** Sends the student email confirmation again. */
@@ -357,6 +358,7 @@ export async function recordRentPayment(tid: string) {
   await wait(400); const db = getDb(); const t = db.tenants.find(x => x.id === tid)!; const b = db.bookings.find(x => x.id === t.bookingId);
   if (!b) throw new ApiError('This tenant has no booking.');
   b.rent = b.rent ?? rentTotal(b); b.rentPaidOn = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  audit('Recorded rent balance', `${hostelById(b.hostelId)?.name}, ${t.name}`, `${ugxPlain(balanceDue(b))} received for ${b.sem} (rent ${ugxPlain(rentTotal(b))}, booking fee ${ugxPlain(b.fee)})`);
   notify(b.userId, { kind: 'money', title: 'Rent received', text: `${hostelById(b.hostelId)?.name} received your balance of ${ugx(balanceDue(b))}. You can move in.`, to: '/s/bookings' });
   await commit(); return b;
 }
@@ -365,6 +367,7 @@ export async function cancelBooking(bid: string) {
   await wait(700); const b = getDb().bookings.find(x => x.id === bid)!;
   b.status = 'cancelled'; const r = hostelById(b.hostelId)!.rooms.find(x => x.t === b.room); if (r) r.taken--;
   getDb().tenants = getDb().tenants.filter(t => !(t.bookingId === b.id && t.status === 'due'));
+  audit('Cancelled booking', hostelById(b.hostelId)?.name ?? '', `${getDb().users.find(u => u.id === b.userId)?.name ?? 'Student'}: ${b.room}, ${b.sem}. Booking fee ${ugxPlain(b.fee)} is returned by the owner`);
   syncTypeCounts(b.hostelId); await commit(); return b;
 }
 /** Adds the student's stars and review after a stay. */
@@ -464,6 +467,7 @@ export async function setTenantStatus(tid: string, status: 'in' | 'out') {
     if (b && b.status === 'checked-in') b.status = 'completed';
     t.roomId = undefined; t.bed = undefined; // the bed is free again
   }
+  audit(status === 'in' ? 'Checked in' : 'Checked out', `${hostelById(t.hostelId)?.name}, room ${t.room}`, t.name);
   syncTypeCounts(t.hostelId); await commit(); return t;
 }
 /** Notices a custodian posted to a hostel. */
@@ -773,7 +777,9 @@ export async function savePayout(ownerId: string, payout: NonNullable<User['payo
   }
   if (payout.method !== 'bank' && !/^0?7\d{8}$/.test(payout.to.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit mobile money number.', 'to');
   if (!payout.name.trim()) throw new ApiError('Enter the name on the account.', 'name');
-  u.payout = payout; await commit(); return safe(u);
+  const was = u.payout; u.payout = payout;
+  audit('Changed payout account', u.name, `${was ? `${was.method} to ` : ''}${payout.method === 'bank' ? 'bank account' : payout.method === 'mtn' ? 'MTN Mobile Money' : 'Airtel Money'} ending ${payout.to.replace(/\s/g, '').slice(-4)}, name ${payout.name.trim()}`);
+  await commit(); return safe(u);
 }
 /** Sends a new owner to the Nestly team for checking. */
 export async function submitOwner(ownerId: string) {
@@ -801,6 +807,22 @@ export async function createHostelDraft(ownerId: string) {
     verified: u.ownerStatus === 'approved', fee: 40000, visit: '8:00 am to 9:00 pm', floors: 3, cols: 4, amen: [], rooms: [], about: '', status: 'draft', photos: [], rules: [], blocks: [] };
   db.hostels.push(h); await commit(); return h;
 }
+/** True for a draft the owner has not filled in at all, so leaving it can safely throw it away. */
+export const isBlankDraft = (h: Hostel, rooms: { length: number }, docs: { length: number }) =>
+  h.status === 'draft' && !h.name.trim() && !h.area.trim() && !(h.photos?.length) && !h.rooms.length && !rooms.length && !docs.length && !(h.about ?? '').trim() && !h.amen.length && !(h.rules?.length);
+/** Deletes a hostel that was never sent for review. Live, in-review and paused hostels cannot be deleted here, because students may have booked them. */
+export async function deleteHostelDraft(hid: string) {
+  await wait(300); const db = getDb(); const h = hostelById(hid); if (!h) return;
+  if (h.status !== 'draft') throw new ApiError('Only a draft can be deleted. To remove a hostel that has been submitted, contact support@nestly.app.');
+  if (db.bookings.some(b => b.hostelId === hid)) throw new ApiError('This hostel has bookings, so it cannot be deleted.');
+  const photos = h.photos ?? [];
+  audit('Deleted draft hostel', h.name || 'Untitled hostel', h.area || 'Nothing entered yet');
+  db.hostels = db.hostels.filter(x => x.id !== hid);
+  db.rooms = db.rooms.filter(r => r.hostelId !== hid);
+  db.docs = db.docs.filter(d => d.hostelId !== hid);
+  await commit();
+  if (live && photos.length) await removeHostelPhotos(photos, []);
+}
 const REVIEW_FIELDS = ['name', 'photos', 'location', 'km', 'dir'];
 /** Saves an owner's changes. Changing what students judge a listing by on a live hostel sends it back to review. */
 export async function saveHostelDraft(hid: string, patch: Partial<Hostel>) {
@@ -808,7 +830,11 @@ export async function saveHostelDraft(hid: string, patch: Partial<Hostel>) {
   const oldPhotos = h.photos ?? [];
   if (live && patch.photos) patch = { ...patch, photos: await uploadHostelPhotos(hid, patch.photos) };
   const touchesReview = h.status === 'live' && Object.keys(patch).some(k => REVIEW_FIELDS.includes(k) && JSON.stringify((patch as Record<string, unknown>)[k]) !== JSON.stringify((h as unknown as Record<string, unknown>)[k]));
+  const LABEL: Record<string, string> = { name: 'name', uni: 'university', area: 'area', location: 'map pin', photos: 'photos', about: 'description', amen: 'amenities', rules: 'rules', visit: 'visiting hours', fee: 'booking fee', sems: 'semester dates', km: 'distance' };
+  const changed = Object.keys(patch).filter(k => JSON.stringify((patch as Record<string, unknown>)[k]) !== JSON.stringify((h as unknown as Record<string, unknown>)[k])).map(k => LABEL[k] ?? k);
+  const oldName = h.name;
   Object.assign(h, patch);
+  if (changed.length) audit('Edited hostel', h.name || oldName || 'Untitled hostel', `Changed ${changed.join(', ')}${patch.name && oldName && oldName !== patch.name ? `. Name was ${oldName}` : ''}${touchesReview ? '. Sent back to review' : ''}`);
   if (patch.location || patch.uni) syncDistance(h);
   if (patch.photos) h.photoUrl = patch.photos[0];
   if (touchesReview) { h.status = 'in_review'; h.submittedAt = isoNow(); adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing changed', text: `${h.name} changed its name, photos or location.`, to: '/a/reviews' })); }
@@ -835,12 +861,16 @@ export async function generateRooms(hid: string, block: string, type: string, co
 export async function updateRoom(rid: string, patch: Partial<Pick<Room, 'no' | 'block' | 'floor' | 'type' | 'beds'>>) {
   await wait(300); const db = getDb(); const r = db.rooms.find(x => x.id === rid)!;
   if (patch.no && db.rooms.some(x => x.hostelId === r.hostelId && x.id !== rid && x.no.toLowerCase() === patch.no!.trim().toLowerCase())) throw new ApiError('Another room already has that number.', 'no');
-  Object.assign(r, patch); syncTypeCounts(r.hostelId); await commit();
+  const was = { ...r }; Object.assign(r, patch);
+  const diff = (Object.keys(patch) as (keyof typeof patch)[]).filter(k => was[k] !== r[k]).map(k => `${k} ${was[k]} to ${r[k]}`).join(', ');
+  if (diff) audit('Edited room', `${hostelById(r.hostelId)?.name}, ${was.no}`, diff);
+  syncTypeCounts(r.hostelId); await commit();
 }
 /** Deletes a room. Throws ApiError if someone is in it. */
 export async function deleteRoom(rid: string) {
   await wait(300); const db = getDb(); const r = db.rooms.find(x => x.id === rid)!;
   if (db.tenants.some(t => t.roomId === rid && t.status !== 'out')) throw new ApiError('Someone is in this room. Ask the custodian to move them first.');
+  audit('Deleted room', `${hostelById(r.hostelId)?.name}, ${r.no}`, `${r.type}, block ${r.block}, floor ${r.floor}`);
   db.rooms = db.rooms.filter(x => x.id !== rid); syncTypeCounts(r.hostelId); await commit();
 }
 /** One line of the "ready to submit" checklist. */
@@ -866,6 +896,7 @@ export async function submitHostelForReview(hid: string) {
   const list = hostelChecklist(h, db.rooms.filter(r => r.hostelId === hid), db.docs.some(d => d.hostelId === hid));
   if (list.some(c => !c.done)) throw new ApiError('Finish every section first.');
   h.status = 'in_review'; h.submittedAt = isoNow(); h.reviewNote = undefined;
+  audit('Submitted listing for review', h.name, `${h.rooms.length} room ${h.rooms.length === 1 ? 'type' : 'types'}, from ${ugxPlain(minPrice(h))} per semester`);
   adminIds().forEach(a => notify(a, { kind: 'review', title: 'Listing waiting for review', text: `${h.name} by ${h.ownerName}.`, to: '/a/reviews' }));
   await commit(); return h;
 }
@@ -946,8 +977,11 @@ export async function ownerMoney(ownerId: string) {
   const me = db.users.find(u => u.id === ownerId)!;
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const fees = db.bookings.filter(b => ids.includes(b.hostelId) && b.status !== 'cancelled' && b.at).sort((a, b) => b.at!.localeCompare(a.at!))
-    .map(b => ({ ...b, student: db.users.find(u => u.id === b.userId)?.name ?? 'Student', hostel: hostelById(b.hostelId)?.name ?? '' }));
-  return { account: me.payout, fees, collected, month: fees.filter(b => +new Date(b.at!) >= +monthStart).reduce((a, b) => a + b.fee, 0),
+    .map(b => ({ ...b, student: db.users.find(u => u.id === b.userId)?.name ?? 'Student', hostel: hostelById(b.hostelId)?.name ?? '',
+      rentTotal: rentTotal(b), balance: balanceDue(b), balanceState: balanceDue(b) === 0 ? 'none' as const : balanceOwed(b) || b.status === 'pending' ? 'owed' as const : 'received' as const }));
+  const balanceCollected = fees.filter(f => f.balanceState === 'received').reduce((a, f) => a + f.balance, 0);
+  const balanceOwing = fees.filter(f => f.balanceState === 'owed').reduce((a, f) => a + f.balance, 0);
+  return { account: me.payout, fees, collected, balanceCollected, balanceOwing, month: fees.filter(b => +new Date(b.at!) >= +monthStart).reduce((a, b) => a + b.fee, 0),
     monthCount: fees.filter(b => +new Date(b.at!) >= +monthStart).length, semCount: sem.length, sub: subscriptionOf(me) };
 }
 /** An owner's custodians and open invites, by hostel. */
@@ -969,6 +1003,7 @@ export async function inviteCustodian(hostelId: string, name: string, contact: s
   const prefix = h.name.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase().padEnd(4, 'X');
   let code = ''; do { code = `${prefix}-${1000 + Math.floor(Math.random() * 9000)}`; } while (db.invites.some(i => i.code === code));
   db.invites.push({ code, hostelId, invitedBy: me.name, email: contact.includes('@') ? contact.trim().toLowerCase() : `${contact.replace(/\s/g, '')}@sms.nestly.app`, name: name.trim(), used: false, at: isoNow() });
+  audit('Invited custodian', h.name, `${name.trim()} (${contact.trim()})`);
   notify(me.id, { kind: 'staff', title: `Invite ready for ${name.trim().split(' ')[0]}`, text: `Code ${code} for ${h.name}. It expires in 7 days.`, to: '/o/staff' });
   await commit(); return code;
 }
@@ -1144,7 +1179,7 @@ export async function resolveFlag(fid: string, outcome: FlagOutcome, note: strin
 /** The admin activity log, newest first. */
 export async function listAudit() {
   await wait(300); const db = getDb();
-  return db.audit.map(a => ({ ...a, actor: db.users.find(u => u.id === a.actorId)?.name ?? 'Someone' }));
+  return db.audit.map(a => ({ ...a, actor: db.users.find(u => u.id === a.actorId)?.name ?? `${ROLE_LABEL[a.actorRole]} (account removed)` }));
 }
 /** Adds or edits a university: names, email domain, map pin, logo and semester calendar. Throws ApiError on bad input. */
 export async function saveUniversity(u: University, isNew: boolean) {

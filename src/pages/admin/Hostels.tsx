@@ -1,5 +1,5 @@
 import { AlertTriangle, Building2, ChevronRight, Flag, Info, Pause, Play } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Dropdown } from '../../components/Dropdown';
@@ -16,6 +16,7 @@ import { useIsPhone } from '../../lib/useIsPhone';
 import { allUniversities, listAllHostels, minPrice, restoreHostel, semName, suspendHostel, universityById } from '../../services/api';
 import { SubPill } from './Subscriptions';
 import { useData } from '../../services/useData';
+import type { Hostel } from '../../data/types';
 import { HostelPill, shortDate } from '../owner/shared';
 import { ReasonDialog } from './Reviews';
 
@@ -79,7 +80,7 @@ function HostelDetail({ r, onClose }: { r: Row; onClose: () => void }) {
   return <Overlay title={h.name || 'Untitled hostel'} onClose={onClose} width={540}
     footer={h.status === 'suspended' ? <Btn loading={busy} onClick={restore}><Play size={15} />{unpaid ? 'Put back now' : 'Put back on Explore'}</Btn> : h.status === 'live' ? <Btn kind="danger" onClick={() => setSus(true)}><Pause size={15} />Pause listing</Btn> : undefined}>
     <div className="stack">
-      <div className="rv-photo sm">{h.photos?.length ? <img src={h.photos[0]} alt="" /> : <Art hostel={h} />}</div>
+      <PhotoStrip h={h} />
       <div className="row-sm wrap"><HostelPill h={h} />{h.suspendReason && <span className="small danger-t">{h.suspendReason}</span>}</div>
       {unpaid && <p className="tiny muted">Paused because the owner has not paid. It comes back by itself when they pay.</p>}
       {r.issues.length > 0 && <div className="ah-issues">{r.issues.map(i => <div key={i.text} className={'ah-issue ' + i.tone}>{i.tone === 'info' ? <Info size={15} /> : <AlertTriangle size={15} />}<span>{i.text}</span></div>)}</div>}
@@ -89,4 +90,28 @@ function HostelDetail({ r, onClose }: { r: Row; onClose: () => void }) {
     {sus && <ReasonDialog title={`Pause ${h.name}?`} intro="It leaves Explore straight away. Bookings already made stay valid. The owner sees your reason." quick={['Fake listing', 'Price is different from what students pay', 'Unsafe for students', 'Owner asked to pause']} cta="Pause listing"
       onClose={() => setSus(false)} onSend={async x => { await suspendHostel(h.id, x); toast(`${h.name} paused`); onClose(); }} />}
   </Overlay>;
+}
+
+/** Swipe left and right through every photo of a hostel (native scroll snapping), with a counter and dots to tap. */
+function PhotoStrip({ h }: { h: Hostel }) {
+  const photos = h.photos ?? []; const count = Math.max(1, photos.length);
+  const [at, setAt] = useState(0); const ref = useRef<HTMLDivElement>(null);
+  const onScroll = () => { const el = ref.current; if (!el) return; const i = Math.min(count - 1, Math.max(0, Math.round(el.scrollLeft / Math.max(1, el.clientWidth)))); if (i !== at) setAt(i); };
+  const go = (i: number) => ref.current?.scrollTo({ left: i * (ref.current?.clientWidth ?? 0), behavior: 'smooth' });
+  const pill = { position: 'absolute' as const, background: 'rgba(17, 19, 33, .6)', color: '#fff', borderRadius: 99 };
+  return <div className="rv-photo" style={{ aspectRatio: '4 / 3', touchAction: 'pan-x pan-y' }}>
+    <div ref={ref} onScroll={onScroll} role="group" aria-label={`${h.name || 'Hostel'} photos. Swipe to see more.`}
+      style={{ position: 'absolute', inset: 0, display: 'flex', overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', overscrollBehaviorX: 'contain', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      {photos.length ? photos.map((src, i) => <div key={src + i} style={{ flex: '0 0 100%', height: '100%', scrollSnapAlign: 'start', scrollSnapStop: 'always' }}>
+        <img src={src} alt={`${h.name || 'Hostel'}, photo ${i + 1} of ${count}`} loading={i === 0 ? 'eager' : 'lazy'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /></div>)
+        : <div style={{ flex: '0 0 100%', height: '100%' }}><Art hostel={h} /></div>}
+    </div>
+    {photos.length === 0 && <span style={{ ...pill, left: 10, bottom: 10, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>No photos yet</span>}
+    {count > 1 && <>
+      <span aria-hidden="true" style={{ ...pill, right: 10, top: 10, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>{at + 1} / {count}</span>
+      {count <= 10 && <div style={{ ...pill, left: '50%', transform: 'translateX(-50%)', bottom: 10, display: 'flex', gap: 6, padding: '6px 9px' }}>
+        {photos.map((_, i) => <button key={i} type="button" onClick={() => go(i)} aria-label={`Photo ${i + 1} of ${count}`} aria-current={i === at}
+          style={{ width: i === at ? 18 : 6, height: 6, padding: 0, borderRadius: 99, background: i === at ? '#fff' : 'rgba(255,255,255,.55)', transition: 'width .2s, background .2s' }} />)}</div>}
+    </>}
+  </div>;
 }
