@@ -41,7 +41,7 @@ export function Art({ hostel, alt = 0, className = '' }: { hostel: Hostel; alt?:
   // The owner's own photos come first. Hostels with no photos yet show a drawing.
   const src = hostel.photos?.length ? hostel.photos[alt] : alt === 0 ? hostel.photoUrl : undefined;
   if (src) return <div className={'art ' + className}>{!loaded && <div className="skel" style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
-    <img src={src} alt={hostel.name} onLoad={() => setLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
+    <img src={src} alt={hostel.name} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
   const v = [[hostel.floors, hostel.cols], [2, 6], [3, 3]][alt] ?? [hostel.floors, hostel.cols];
   return <div className={'art ' + className} dangerouslySetInnerHTML={{ __html: hostelArt(hostel.seed + alt, v[0], v[1]) }} />;
 }
@@ -57,8 +57,8 @@ export function Rating({ value, count }: { value: number; count?: number }) {
 }
 
 /** Phone-only header for screens opened on top of a tab. */
-export function BackBar({ title, to, right, onBack }: { title: string; to: string; right?: ReactNode; onBack?: () => void }) {
-  return <header className="back-bar">{onBack ? <button type="button" onClick={onBack} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></button> : <Link to={to} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></Link>}
+export function BackBar({ title, to, right }: { title: string; to: string; right?: ReactNode }) {
+  return <header className="back-bar"><Link to={to} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></Link>
     <h2 className="clamp1">{title}</h2><div>{right}</div></header>;
 }
 

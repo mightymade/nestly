@@ -46,7 +46,7 @@ function View({ ownerId }: { ownerId: string }) {
             </div>)}
             {inv.map(i => { const old = inviteExpired(i); return <div key={i.code} className="staff-row">
               <Avatar user={{ name: i.name }} size={40} />
-              <div className="min0 grow"><b className="ink clamp1">{i.name}</b><span className="tiny muted clamp1">Code <b className="num">{i.code}</b> · {old ? 'expired' : `sent ${i.at ? timeAgo(i.at) : ''}`}</span></div>
+              <div className="min0 grow"><b className="ink clamp1">{i.name}</b><span className="tiny muted clamp2">Code <b className="num">{i.code}</b> · {old ? 'expired' : `sent ${i.at ? timeAgo(i.at) : ''}`}</span></div>
               <Pill tone={old ? 'danger' : 'warn'}>{old ? 'Expired' : 'Invited'}</Pill>
               <button className="vm-btn" onClick={async () => { await resendInvite(i.code); toast(`Invite for ${i.name.split(' ')[0]} renewed for 7 days`); }} aria-label={`Resend invite to ${i.name}`} title="Resend"><RefreshCw size={16} /></button>
               <button className="vm-btn" onClick={async () => { await cancelInvite(i.code); toast('Invite cancelled'); }} aria-label={`Cancel invite to ${i.name}`} title="Cancel"><X size={16} /></button>

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Clock, Copy, LogIn, Printer, Search, ShieldCheck, Smartphone } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Copy, LogIn, LogOut, Printer, Search, ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Overlay } from '../../components/Overlay';
 import { useToast } from '../../components/Toast';
@@ -7,7 +7,7 @@ import type { Visitor } from '../../data/types';
 import { closingMin, nowMin, t12 } from '../../lib/visitTime';
 import { qrSvg } from '../../lib/art';
 import { LOGO_SVG } from '../../components/LogoMark';
-import { findResidents, getVisit, hostelById, signInVisitor } from '../../services/api';
+import { findResidents, getVisit, hostelById, signInVisitor, signOutVisitor } from '../../services/api';
 import { useMe } from '../../services/session';
 import { live } from '../../services/supabase';
 import { copyText } from '../../lib/format';
@@ -72,7 +72,7 @@ const visitKey = (hid: string) => `nestly.visit.${hid}`;
 export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: () => void; remember?: boolean }) {
   const h = hostelById(hid)!; const toast = useToast();
   const [f, setF] = useState<{ name: string; phone: string; host: Host | null; ok: boolean }>({ name: '', phone: '', host: null, ok: false });
-  const [busy, setBusy] = useState(false); const [done, setDone] = useState<Visitor | null>(null);
+  const [busy, setBusy] = useState(false); const [done, setDone] = useState<Visitor | null>(null); const [left, setLeft] = useState(false);
   const close = closingMin(h.visit); const open = close === null || nowMin() < close;
   const phoneOk = phoneValid(f.phone);
   useEffect(() => { if (!remember) return; let id: string | null = null; try { id = localStorage.getItem(visitKey(hid)); } catch { /* storage blocked */ }
@@ -80,6 +80,7 @@ export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: 
   const keep = (v: Visitor | null) => { if (!remember) return; try { v ? localStorage.setItem(visitKey(hid), v.id) : localStorage.removeItem(visitKey(hid)); } catch { /* storage blocked */ } };
   const ready = f.name.trim().split(/\s+/).length >= 2 && !!f.host && phoneOk && f.ok;
   const [tried, setTried] = useState(false);
+  const nameErr = tried && f.name.trim().split(/\s+/).length < 2 ? 'Enter your first and last name.' : null;
   async function go(e: FormEvent) {
     e.preventDefault(); setTried(true); if (!ready) return; setBusy(true);
     try { const v = await signInVisitor(hid, { name: f.name.trim(), room: f.host!.room, host: f.host!.name, phone: f.phone.trim() }, 'QR'); keep(v); setDone(v); }
@@ -90,23 +91,28 @@ export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: 
       <div className="vp-brand"><span className="vp-thumb"><Art hostel={h} /></span><span className="min0"><b className="clamp1">{h.name}</b><span>Visitor sign-in</span></span></div>
       <span className={'vp-hours' + (open ? '' : ' closed')}><Clock size={13} />{open ? `Open today ${h.visit.replace(/:00/g, '')}` : 'Visiting hours are over'}</span>
     </div>
-    {done ? <div className="vp-body vp-done">
+    {left ? <div className="vp-body vp-done">
+        <span className="vp-badge out"><LogOut size={26} /></span><h3>Signed out</h3><p className="small muted">Thanks for visiting {h.name}. Have a safe trip.</p>
+        <Btn kind="secondary" block onClick={onDone}>Close</Btn></div>
+      : done ? <div className="vp-body vp-done">
         <span className="vp-badge"><Check size={28} /></span><h3>You're signed in</h3>
         <div className="vp-pass">
           <div className="row-sm"><Avatar user={{ name: done.host ?? '' }} size={40} /><div className="min0"><span className="tiny muted">Visiting</span><b className="ink clamp1">{done.host}</b></div></div>
           <div className="vp-pass-grid"><div><span className="tiny muted">Room</span><b className="ink">{done.room}</b></div><div><span className="tiny muted">Time in</span><b className="ink">{t12(done.tin)}</b></div><div><span className="tiny muted">Visitor</span><b className="ink clamp1">{done.name.split(' ')[0]}</b></div></div>
         </div>
-        <div className="banner primary small"><ShieldCheck size={15} className="ic" /><span><b>Leaving?</b> Show this screen to the custodian at the gate. They sign you out.</span></div>
-        <Btn kind="secondary" block onClick={onDone}>Done</Btn></div>
+        <p className="tiny muted center">Show this screen at the gate if asked. Scan the same code when you leave.</p>
+        <Btn block onClick={async () => { try { await signOutVisitor(done.id); setLeft(true); toast('Visitor signed out'); } catch (x) { toast((x as Error).message); } keep(null); }}><LogOut size={16} />Sign out now</Btn>
+        <button type="button" className="btn btn-text btn-sm" onClick={onDone}>Done</button></div>
       : <form className="vp-body" onSubmit={go} noValidate>
         {!open && <div className="banner warn small"><AlertTriangle size={15} className="ic" /><span>Visiting hours are over. You can still sign in, but the custodian may ask you to leave.</span></div>}
-        <Field id="vq-name" label="Your full name"><TextInput id="vq-name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} autoComplete="name" placeholder="First and last name" /></Field>
-        <Field id="vq-host" label="Who are you visiting?"><HostPicker hid={hid} id="vq-host" value={f.host} onChange={host => setF({ ...f, host })} /></Field>
+        <Field id="vq-name" label="Your full name" error={nameErr}><TextInput id="vq-name" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} error={nameErr} autoComplete="name" placeholder="First and last name" /></Field>
+        <Field id="vq-host" label="Who are you visiting?" error={tried && !f.host ? 'Choose the person you came to see.' : null}><HostPicker hid={hid} id="vq-host" value={f.host} onChange={host => setF({ ...f, host })} /></Field>
         <Field id="vq-phone" label="Your phone number" error={tried && !phoneOk ? 'Enter a 10-digit number, like 0772 123 456.' : null} hint="The custodian may call if they need to reach you.">
           <TextInput id="vq-phone" type="tel" inputMode="tel" autoComplete="tel" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} error={tried && !phoneOk ? 'x' : null} placeholder="0772 123 456" /></Field>
-        <label className="check small"><input type="checkbox" checked={f.ok} onChange={e => setF({ ...f, ok: e.target.checked })} />
+        <label className={'check small vp-agree' + (tried && !f.ok ? ' bad' : '')}><input type="checkbox" checked={f.ok} onChange={e => setF({ ...f, ok: e.target.checked })} aria-describedby={tried && !f.ok ? 'vq-ok-err' : undefined} />
           <span>I agree that {h.name} keeps my name and visit time for security.</span></label>
-        <Btn type="submit" block loading={busy} disabled={!f.ok}><LogIn size={16} />Sign in</Btn>
+        {tried && !f.ok && <span id="vq-ok-err" className="err" role="alert">Tick the box to agree first.</span>}
+        <Btn type="submit" block loading={busy}><LogIn size={16} />Sign in</Btn>
         <p className="tiny muted center row-sm" style={{ justifyContent: 'center' }}><ShieldCheck size={13} />Only {h.name} can see this. Powered by Nestly.</p>
       </form>}
   </div></div>;
@@ -137,7 +143,7 @@ function printPoster(hostel: string, visit: string, url: string) {
   <div class="qr">${qrSvg(url)}</div>
   <ol><li><b>1</b>Open your phone camera</li><li><b>2</b>Point it at this code</li><li><b>3</b>Enter your name and who you are visiting</li></ol>
   <p class="hours">Visiting hours: ${esc(visit)}</p>
-  <p class="foot">No smartphone? Ask the custodian to sign you in. Tell the custodian when you leave so they can sign you out.</p>
+  <p class="foot">No smartphone? Ask the custodian to sign you in. Scan again when you leave.</p>
   </div></body></html>`;
   const f = document.createElement('iframe');
   f.setAttribute('aria-hidden', 'true'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';

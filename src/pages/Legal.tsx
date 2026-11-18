@@ -99,7 +99,7 @@ export function TermsPage() {
       { id: 'booking', title: 'Booking a room (students)', body: <ul>
         <li>The <b>booking fee</b> shown on the hostel page holds your room for the semester shown. It is paid by mobile money and goes to the hostel owner.</li>
         <li>You can <b>cancel for free within 48 hours</b> of booking. The owner then returns your booking fee to the number you paid with. After 48 hours, the owner's own cancellation rules apply.</li>
-        <li><b>Rent</b> is paid to the owner, not through Nestly, and is agreed between you and the owner. Your booking fee counts toward it, so at check-in you pay the rent less the booking fee. You can check in once the hostel has received that balance.</li>
+        <li><b>Rent</b> is paid to the owner at check-in, not through Nestly, and is agreed between you and the owner.</li>
         <li>You may hold one booking per semester.</li>
         <li>If a hostel is not as listed, or a payment goes wrong, report it on the hostel page. We look into every report.</li></ul> },
       { id: 'owners', title: 'Listing a hostel (owners)', body: <ul>

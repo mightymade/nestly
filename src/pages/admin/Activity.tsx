@@ -28,8 +28,8 @@ export function AdminActivity() {
     { key: 'w', header: 'When', cell: a => <span className="num nowrap">{when(a.at)}</span> },
     { key: 'p', header: 'Who', cell: a => <span className="row-sm"><b className="ink">{a.actor}</b><Pill tone="neutral">{ROLE_LABEL[a.actorRole]}</Pill></span> },
     { key: 'a', header: 'Action', cell: a => a.action },
-    { key: 't', header: 'On', cell: a => <span style={{ whiteSpace: 'normal' }}>{a.target}</span> },
-    { key: 'd', header: 'Detail', cell: a => <span className="muted" style={{ whiteSpace: 'normal' }}>{a.detail || 'No more detail'}</span> },
+    { key: 't', header: 'On', cell: a => <span className="clamp1">{a.target}</span> },
+    { key: 'd', header: 'Detail', cell: a => <span className="muted clamp1">{a.detail}</span> },
   ];
   const filters = <div className="row wrap" style={{ gap: 8 }}>
     <DateFilter value={range} onChange={setRange} />
@@ -39,10 +39,8 @@ export function AdminActivity() {
   const lock = <p className="vfoot"><Lock size={13} />Entries are time-stamped and cannot be edited or deleted.</p>;
   const body = error ? <ErrorState message={error} onRetry={reload} /> : loading && !data ? <Skeleton rows={4} h={56} />
     : !list.length ? <EmptyState bare icon={<History size={24} />} title="Nothing recorded" text="Try another filter." />
-    : phone ? <div className="vgrid">{list.map(a => <div key={a.id} className="vcard vcard-m"><div className="vm-info"><div className="vm-line1"><b className="ink">{a.action}</b></div>
-        <div className="vm-line2"><span style={{ whiteSpace: 'normal' }}>{a.target}</span></div>
-        {a.detail && <p className="small" style={{ margin: '2px 0', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{a.detail}</p>}
-        <div className="vm-line3"><span>{a.actor} ({ROLE_LABEL[a.actorRole]}) · {when(a.at)}</span></div></div></div>)}</div>
+    : phone ? <div className="vgrid">{list.map(a => <div key={a.id} className="vcard vcard-m"><div className="vm-info"><div className="vm-line1"><b className="ink clamp1">{a.action}</b></div>
+        <div className="vm-line2"><span className="clamp1">{a.target}</span></div><div className="vm-line3"><span className="clamp1">{a.actor} · {when(a.at)}</span></div></div></div>)}</div>
     : <DataTable label="Activity log" noun="entries" rows={list} rowKey={a => a.id} columns={cols} />;
   if (phone) return <><BackBar title="Activity log" to="/a/settings" /><main className="m-main pushed">{filters}{body}{lock}</main></>;
   return <><PageHeader title="Activity log" actions={filters} /><section className="card card-pad fill-card fill grow-y"><div className="card-body">{body}{lock}</div></section></>;

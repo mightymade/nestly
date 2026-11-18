@@ -27,7 +27,7 @@ const COLS: Record<string, string[]> = {
   owner_accounts: ['owner_id', 'payout', 'sub_paid_until', 'sub_grace_until', 'sub_reminded_at'],
   hostels: ['id', 'owner_id', 'name', 'uni', 'area', 'km', 'dir', 'rating', 'n_rev', 'owner_name', 'verified', 'fee', 'visit', 'floors', 'cols', 'amen', 'rooms', 'about', 'seed', 'photo_url', 'status', 'review_note', 'suspend_reason', 'paused_for', 'review_sections', 'blocks', 'location', 'rules', 'photos', 'sems', 'views', 'saves', 'submitted_at', 'listed_at'],
   reviews: ['id', 'hostel_id', 'user_id', 'booking_id', 'who', 'stars', 'when', 'text', 'reply', 'hidden'],
-  bookings: ['id', 'user_id', 'hostel_id', 'room', 'room_no', 'sem', 'fee', 'status', 'paid_on', 'cancel_until', 'at', 'pay_ref', 'rent', 'rent_paid_on'],
+  bookings: ['id', 'user_id', 'hostel_id', 'room', 'room_no', 'sem', 'fee', 'status', 'paid_on', 'cancel_until', 'at', 'pay_ref'],
   saved: ['user_id', 'hostel_id'],
   rooms: ['id', 'hostel_id', 'no', 'block', 'floor', 'type', 'beds', 'status', 'unavailable_reason', 'unavailable_since'],
   tenants: ['id', 'hostel_id', 'name', 'room', 'type', 'status', 'end', 'phone', 'user_id', 'room_id', 'bed', 'booking_id'],

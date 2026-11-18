@@ -17,7 +17,7 @@ import { fitImage } from '../../lib/art';
 import { bearing, compass, distanceKm, kmLabel, placeName, type LatLng } from '../../lib/geo';
 import { addDays, ugx, ymd } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { typesWithoutRooms, bookingSem, hostelSems, semBookings, semDates, semName, allUniversities, ApiError, deleteHostelDraft, deleteRoom, generateRooms, isBlankDraft, getOwnerHostel, hostelChecklist, hostelPoint, saveHostelDraft, submitHostelForReview, universityById, updateRoom, updateRoomTypes, uploadDoc , uniSems } from '../../services/api';
+import { typesWithoutRooms, bookingSem, hostelSems, semBookings, semDates, semName, allUniversities, ApiError, deleteRoom, generateRooms, getOwnerHostel, hostelChecklist, hostelPoint, saveHostelDraft, submitHostelForReview, universityById, updateRoom, updateRoomTypes, uploadDoc , uniSems } from '../../services/api';
 import { useData } from '../../services/useData';
 import { DocUpload, HostelPill, useOwner } from './shared';
 
@@ -33,7 +33,7 @@ export function HostelEditor() {
   const { id = '' } = useParams(); const phone = useIsPhone(); const [params] = useSearchParams(); const nav = useNavigate(); const toast = useToast();
   const { me } = useOwner();
   const { data, loading, error, reload } = useData(() => getOwnerHostel(id), [id]);
-  const [busy, setBusy] = useState(false); const [askDel, setAskDel] = useState(false);
+  const [busy, setBusy] = useState(false);
   const sec = (params.get('s') as SecId | null) ?? (phone ? null : 'basics');
   if (error) return error === 'Hostel not found' ? <Navigate to="/o/hostels" replace /> : <ErrorState message={error} onRetry={reload} />;
   if (loading && !data) return phone ? <main className="m-main pushed"><Skeleton rows={4} h={70} /></main> : <><PageHeader title="Hostel" /><Skeleton rows={3} h={150} /></>;
@@ -46,13 +46,6 @@ export function HostelEditor() {
   const canSubmit = (h.status === 'draft' || h.status === 'changes_requested') && left === 0;
   const submit = async () => { setBusy(true); try { await submitHostelForReview(h.id); toast('Sent for review. We check listings within 1 to 2 working days.'); if (phone) nav(`/o/hostels/${h.id}`); } catch (x) { toast((x as ApiError).message); } finally { setBusy(false); } };
   const title = h.name || 'New hostel';
-  // An untouched draft is thrown away when the owner goes back, so empty hostels do not pile up.
-  const leave = async () => { if (isBlankDraft(h, rooms, docs)) { try { await deleteHostelDraft(h.id); } catch { /* keep it if it cannot be removed */ } } nav('/o/hostels', { replace: true }); };
-  const remove = async () => { setBusy(true); try { await deleteHostelDraft(h.id); toast('Hostel deleted'); nav('/o/hostels', { replace: true }); } catch (x) { toast((x as ApiError).message); setBusy(false); setAskDel(false); } };
-  const delBtn = h.status === 'draft' && <Btn kind="secondary" onClick={() => setAskDel(true)}><Trash2 size={16} />Delete</Btn>;
-  const delDialog = askDel && <Overlay title="Delete this hostel?" onClose={() => setAskDel(false)} width={420}
-    footer={<><Btn kind="secondary" onClick={() => setAskDel(false)}>Keep it</Btn><Btn kind="danger" loading={busy} onClick={remove}><Trash2 size={16} />Delete hostel</Btn></>}>
-    <p>{h.name ? <b className="ink">{h.name}</b> : 'This draft'} and everything you entered for it will be removed. This cannot be undone.</p></Overlay>;
   const summary = (k: SecId) => {
     if (k === 'sems') { const open = bookingSem(h); return `${hostelSems(h).length} semesters · ${open ? `booking open for ${semName(open)}` : 'not taking bookings'}${h.sems?.length ? '' : ' · university dates'}`; }
     const c = check.find(x => x.key === k)!; if (!c.done && k !== 'types' && k !== 'rooms') return `Needed: ${c.label.toLowerCase()}`;
@@ -78,19 +71,17 @@ export function HostelEditor() {
         : next && done(cur.id) ? <Link to={`/o/hostels/${h.id}?s=${next.id}`} className="he-next"><span className="small">Next: <b className="ink">{next.label}</b></span><ChevronRight size={18} /></Link> : null;
       return <><BackBar title={cur.label} to={`/o/hostels/${h.id}`} /><main className="m-main pushed he-m">{body(cur.id)}{after}</main></>;
     }
-    return <><BackBar title={title} to="/o/hostels" onBack={leave} /><main className="m-main pushed">
+    return <><BackBar title={title} to="/o/hostels" /><main className="m-main pushed">
       <div className="row between" style={{ gap: 8 }}><HostelPill h={h} /><span className="small muted">{h.status === 'live' ? 'Changes to prices and rooms save straight away' : left ? `${left} of ${check.length} sections left` : 'Ready to submit'}</span></div>
       {banner}
       <div className="card m-list">{SECS.map(s => <Link key={s.id} to={`/o/hostels/${h.id}?s=${s.id}`}><span className={'icon-tile sm ' + (done(s.id) ? 'success' : '')}>{done(s.id) ? <Check size={17} /> : <s.icon size={17} />}</span>
         <span className="grow">{s.label}<span className="sub">{summary(s.id)}</span></span><ChevronRight size={18} className="chev" /></Link>)}</div>
-      {(submitBtn || delBtn) && <div className="row end" style={{ gap: 8 }}>{delBtn}{submitBtn}</div>}
-      {delDialog}
+      {submitBtn && <div className="row end">{submitBtn}</div>}
     </main></>;
   }
   const active = sec ?? 'basics';
   return <>
-    <PageHeader title={title} actions={<><button className="round-btn" onClick={leave} aria-label="Back to hostels"><ChevronLeft size={19} /></button><HostelPill h={h} />{delBtn}{submitBtn}</>} />
-    {delDialog}
+    <PageHeader title={title} actions={<><button className="round-btn" onClick={() => nav('/o/hostels')} aria-label="Back to hostels"><ChevronLeft size={19} /></button><HostelPill h={h} />{submitBtn}</>} />
     {banner}
     <div className="card settings fill he" style={{ overflow: 'hidden' }}>
       <nav className="settings-nav" aria-label="Listing sections">
@@ -215,7 +206,7 @@ function Photos({ h }: Ctx) {
     setLoading(pick.length);
     for (const f of pick) {
       if (!/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > 8 * 1024 * 1024) { setErr('Use JPG or PNG photos under 8 MB.'); setLoading(n => n - 1); continue; }
-      try { const url = await fitImage(f, 1000); setList(l => [...l, url]); } catch (x) { setErr((x as Error).message); }
+      try { const url = await fitImage(f, 1280); setList(l => [...l, url]); } catch (x) { setErr((x as Error).message); }
       setLoading(n => n - 1);
     }
     if (input.current) input.current.value = '';
@@ -308,7 +299,7 @@ function RoomsSec({ h, rooms, occupied }: Ctx) {
     {blocks.map(b => { const list = rooms.filter(r => r.block === b); return <div key={b} className="rl-block">
       <h3 className="rm-bhead">Block {b}<span>{list.length} rooms · {list.reduce((a, r) => a + r.beds, 0)} beds</span></h3>
       <div className="rl">{list.map(r => <div key={r.id} className="rl-row">
-        <span className="vroom">{r.no}</span><span className="grow small clamp1">{r.type}</span><span className="tiny muted nowrap">Floor {r.floor}</span>
+        <span className="vroom">{r.no}</span><span className="grow min0 rl-text"><span className="small">{r.type}</span><span className="tiny muted">Floor {r.floor}</span></span>
         {occupied.has(r.id) ? <Pill tone="primary">In use</Pill> : r.status === 'unavailable' ? <Pill tone="danger">Not available</Pill> : null}
         <button type="button" className="icon-btn" onClick={() => setEdit(r)} aria-label={`Edit ${r.no}`}><Pencil size={15} /></button>
         <button type="button" className="icon-btn" onClick={() => setDel(r)} disabled={occupied.has(r.id)} title={occupied.has(r.id) ? 'Someone is in this room' : undefined} aria-label={`Delete ${r.no}`}><Trash2 size={15} /></button>

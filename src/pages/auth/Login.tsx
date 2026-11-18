@@ -1,6 +1,6 @@
 import { Building2, ChevronDown, GraduationCap, KeyRound, LogIn, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Overlay } from '../../components/Overlay';
 import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
@@ -11,7 +11,7 @@ import { AuthLayout } from './AuthLayout';
 import { takeNext } from '../../components/AccountGate';
 
 export function Login() {
-  const nav = useNavigate(); const toast = useToast(); const [params] = useSearchParams(); const confirmed = params.get('confirmed');
+  const nav = useNavigate(); const toast = useToast();
   const [idv, setId] = useState(''); const [pw, setPw] = useState('');
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
   const [busy, setBusy] = useState(false); const [forgot, setForgot] = useState(false); const [demo, setDemo] = useState(false);
@@ -24,14 +24,12 @@ export function Login() {
     catch (x) { const a = x as ApiError; setErr({ field: a.field, msg: a.message }); } finally { setBusy(false); }
   }
   const fill = (a: string) => { setId(a); setPw('nestly123'); setErr(null); setDemo(false); };
-  return <AuthLayout title="Log in" sub="Students use their student email. Custodians and owners can use their username." back="/welcome" ownerLink={false} centered>
-    {confirmed === '1' && <div className="banner primary small" role="status"><span><b>Email confirmed.</b> Log in to continue.</span></div>}
-    {confirmed === '0' && <div className="banner warn small" role="status"><span>That confirmation link has expired or was already used. If you already confirmed, log in. If not, log in and we will offer to send a new link.</span></div>}
+  return <AuthLayout title="Log in" sub="Students use their student email. Custodians and owners can use their username." back="/welcome" ownerLink={false}>
     <form className="stack" onSubmit={submit} noValidate>
       <Field id="login-id" label="Email or username" error={err?.field === 'id' ? err.msg : null}>
         <TextInput id="login-id" autoComplete="username" value={idv} onChange={e => setId(e.target.value)} error={err?.field === 'id' ? err.msg : null} placeholder="you@ucu.ac.ug or username" /></Field>
       <div className="rel"><Field id="login-pw" label="Password" error={err?.field === 'password' ? err.msg : null}>
-        <PasswordInput id="login-pw" autoComplete="current-password" placeholder="••••••••" value={pw} onChange={e => setPw(e.target.value)} error={err?.field === 'password' ? err.msg : null} /></Field>
+        <PasswordInput id="login-pw" autoComplete="current-password" value={pw} onChange={e => setPw(e.target.value)} error={err?.field === 'password' ? err.msg : null} /></Field>
         <button type="button" className="field-aside" onClick={() => setForgot(true)}>Forgot password?</button></div>
       <Btn type="submit" block loading={busy}><LogIn size={18} />Log in</Btn>
       <p className="small muted login-alt">New here? <Link to="/signup">Create a student account</Link><span aria-hidden="true">·</span><Link to="/owner/signup">List a hostel</Link></p>

@@ -8,7 +8,6 @@ import { AppShell } from './layouts/AppShell';
 import { useIsPhone } from './lib/useIsPhone';
 import { Invite } from './pages/auth/Invite';
 import { Login } from './pages/auth/Login';
-import { Confirmed } from './pages/auth/Confirmed';
 import { Signup } from './pages/auth/Signup';
 import { Welcome } from './pages/auth/Welcome';
 import { Notices } from './pages/custodian/Notices';
@@ -84,7 +83,6 @@ function AppRoutes() {
     <Route path="/" element={<Root />} />
     <Route path="/visit/:hid" element={<VisitPage />} /><Route path="/pay/return" element={<PayReturn />} /><Route path="/privacy" element={<PrivacyPage />} /><Route path="/terms" element={<TermsPage />} /><Route path="/reset-password" element={<ResetPassword />} />
     <Route element={<GuestOnly />}><Route path="/welcome" element={<Welcome />} /><Route path="/login" element={<Login />} /><Route path="/invite" element={<Invite />} /></Route>
-    <Route path="/confirmed" element={<Confirmed />} />
     <Route path="/signup" element={<SignupRoute />} />
     <Route path="/s" element={<StudentGate />}><Route element={<AppShell role="student" />}>
       <Route index element={<Navigate to="explore" replace />} />

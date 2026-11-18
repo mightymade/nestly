@@ -11,7 +11,7 @@ import { useToast } from '../../components/Toast';
 import { Art, Btn, Skeleton } from '../../components/ui';
 import type { Booking, BookingStatus, Hostel } from '../../data/types';
 import { copyText, ugx } from '../../lib/format';
-import { balanceDue, balanceOwed, cancelBooking, hasBookingFor, listBookings, NEXT_SEM, rateBooking , hostelPoint, rentTotal } from '../../services/api';
+import { cancelBooking, hasBookingFor, listBookings, NEXT_SEM, rateBooking , hostelPoint } from '../../services/api';
 import { useMe } from '../../services/session';
 import { useData } from '../../services/useData';
 import { BookingFlow } from './BookingFlow';
@@ -48,10 +48,6 @@ export function Bookings() {
         <div className="row between start"><h3 className="clamp1">{b.hostel.name}</h3><Pill tone={LABEL[b.status][1]}>{LABEL[b.status][0]}</Pill></div>
         <span className="small">{b.room}{b.roomNo ? ` · Room ${b.roomNo}` : ''}</span><span className="small muted">{b.sem}</span></div></div>
     {b.status === 'cancelled' ? <div className="banner primary small">{b.hostel.name} sends your {ugx(b.fee)} back to your mobile money. If it has not arrived in 3 days, report it on the hostel page.</div> : <Tracker status={b.status} />}
-    {b.status === 'paid' && (balanceOwed(b)
-      ? <div className="banner warn small"><span>Balance at check-in: <b>{ugx(balanceDue(b))}</b>. That is the rent of {ugx(rentTotal(b))} less your {ugx(b.fee)} booking fee. The custodian checks you in once it is paid.</span></div>
-      : b.rentPaidOn ? <div className="banner success small"><span>Rent fully paid on {b.rentPaidOn}. You can move in.</span></div>
-      : <div className="banner primary small"><span>Balance at check-in: <b>{ugx(balanceDue(b))}</b>, the rent less your booking fee.</span></div>)}
     <div className="divider" />
     <div className="row wrap" style={{ gap: 8 }}>
       <Btn kind="secondary" size="sm" onClick={() => setReceipt(b)}><Receipt size={15} />Receipt</Btn>
@@ -90,11 +86,8 @@ function ReceiptSheet({ b, onClose }: { b: B; onClose: () => void }) {
     <div className="sum"><span className="muted">Hostel</span><span>{b.hostel.name}</span></div>
     <div className="sum"><span className="muted">Room</span><span>{b.room}</span></div>
     <div className="sum"><span className="muted">Semester</span><span>{b.sem}</span></div>
-    <div className="sum"><span className="muted">Booking fee paid on</span><span>{b.paidOn}</span></div>
-    <div className="sum"><span className="muted">Rent for the semester</span><span className="num">{ugx(rentTotal(b))}</span></div>
-    <div className="sum"><span className="muted">Booking fee, paid</span><span className="num">{ugx(b.fee)}</span></div>
-    <div className="sum total"><span>{b.rentPaidOn || b.status !== 'paid' ? 'Balance' : 'Balance at check-in'}</span><span className="num">{ugx(balanceDue(b))}</span></div>
-    {b.rentPaidOn && <p className="tiny muted" style={{ marginTop: 8 }}>Balance received on {b.rentPaidOn}.</p>}
+    <div className="sum"><span className="muted">Paid on</span><span>{b.paidOn}</span></div>
+    <div className="sum total"><span>Booking fee</span><span className="num">{ugx(b.fee)}</span></div>
   </div></Overlay>;
 }
 

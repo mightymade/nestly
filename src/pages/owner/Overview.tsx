@@ -84,7 +84,7 @@ function Dashboard({ ownerId }: { ownerId: string }) {
     <div className="td-head"><h2>To do</h2>{todo.length > 0 && <span className="td-count">{todo.length}</span>}</div>
     {todo.length ? <ul className="td-list">{todo.slice(0, phone && !allTodo ? 4 : undefined).map(t => <li key={t.key} className={'td-task ' + t.tone}>
       <span className="td-ic">{t.review ? <MessageSquare size={17} /> : t.key === 'sub' ? <Wallet size={17} /> : t.key.startsWith('so') ? <BedDouble size={17} /> : t.key.startsWith('cu') ? <UserPlus size={17} /> : <AlertTriangle size={17} />}</span>
-      <span className="grow min0"><span className="td-t"><b>{t.text}</b></span><span className="td-s clamp1">{t.sub}</span></span>
+      <span className="grow min0"><span className="td-t"><b>{t.text}</b></span><span className="td-s clamp2">{t.sub}</span></span>
       {t.review ? <Btn size="sm" kind="secondary" onClick={() => setReply(t.review!)}>{t.cta}</Btn> : <Link to={t.to!} className={'btn btn-sm ' + (t.tone === 'bad' ? 'btn-primary' : 'btn-secondary')}>{t.cta}</Link>}</li>)}</ul>
       : <p className="td-clear"><CheckCircle2 size={18} />You're all caught up.</p>}
     {phone && todo.length > 4 && <button className="td-more" onClick={() => setAllTodo(a => !a)}>{allTodo ? 'Show less' : `Show all ${todo.length}`}<ChevronRight size={15} style={{ transform: allTodo ? 'rotate(-90deg)' : 'rotate(90deg)' }} /></button>}
@@ -106,14 +106,14 @@ function Dashboard({ ownerId }: { ownerId: string }) {
       </Link>; })}</div>
   </section>;
 
-  const max = Math.max(1, f.views, f.saves, f.booked); // a booking can arrive with no recorded view, so never let a bar pass 100%
+  const max = Math.max(1, f.views);
   const funnel = <section className="card oh-card oh-funnel" aria-label="How students find you">
     <div className="td-head"><h2>How students find you</h2><span className="grow" /><span className="tiny muted">This month</span></div>
     <div className="oh-funnel">{([['Viewed your listing', f.views, Eye], ['Saved it', f.saves, Heart], ['Booked', f.booked, CalendarCheck]] as const).map(([l, v, I], i, arr) =>
       <div key={l} className="oh-step">
         <div className="oh-step-top"><span className="row-sm"><I size={15} />{l}</span><b className="num ink">{v.toLocaleString('en-US')}</b></div>
-        <span className="oh-fbar"><i style={{ width: `${Math.min(100, Math.max(3, (v / max) * 100))}%`, opacity: 1 - i * 0.22 }} /></span>
-        {i > 0 && arr[i - 1]![1] > 0 && <span className="tiny muted">{Math.min(100, Math.round((v / arr[i - 1]![1]) * 100))}% of {i === 1 ? 'viewers saved it' : 'savers booked'}</span>}
+        <span className="oh-fbar"><i style={{ width: `${Math.max(3, (v / max) * 100)}%`, opacity: 1 - i * 0.22 }} /></span>
+        {i > 0 && arr[i - 1]![1] > 0 && <span className="tiny muted">{Math.round((v / arr[i - 1]![1]) * 100)}% of {i === 1 ? 'viewers saved it' : 'savers booked'}</span>}
       </div>)}</div>
     {d.tips.length > 0 && <ul className="oh-tips">{d.tips.map(t => <li key={t}><Lightbulb size={15} />{t}</li>)}</ul>}
   </section>;

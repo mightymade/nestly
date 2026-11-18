@@ -1,4 +1,4 @@
-import { AlertTriangle, Banknote, QrCode, BedDouble, CheckCircle2, ChevronRight, Clock, DoorOpen, KeyRound, LogIn, LogOut, Plus, Wrench } from 'lucide-react';
+import { AlertTriangle, QrCode, BedDouble, CheckCircle2, ChevronRight, Clock, DoorOpen, KeyRound, LogIn, LogOut, Plus, Wrench } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
@@ -8,11 +8,9 @@ import { Avatar, Btn, Skeleton } from '../../components/ui';
 import type { Tenant, Visitor } from '../../data/types';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { closingMin, LONG_VISIT, nowMin, span, t12, toMin, useMinuteTick } from '../../lib/visitTime';
-import { ugx } from '../../lib/format';
-import { balanceDue, balanceOwed, bookingOfTenant, custodianDay, setTenantStatus, signOutVisitor, undoSignOut } from '../../services/api';
+import { custodianDay, setTenantStatus, signOutVisitor, undoSignOut } from '../../services/api';
 import { useMe } from '../../services/session';
 import { useData } from '../../services/useData';
-import { CollectBalance } from './CollectBalance';
 import { GateQR, LogVisitor } from './shared';
 
 type Task = { key: string; tone: 'bad' | 'warn' | 'info'; icon: ReactNode; text: ReactNode; sub: string; action: ReactNode };
@@ -26,7 +24,7 @@ export function Today() {
   const me = useMe(); const phone = useIsPhone(); const toast = useToast(); const nav = useNavigate();
   useMinuteTick();
   const { data, loading, error, reload } = useData(() => custodianDay(me.hostelId!), [me.hostelId]);
-  const [log, setLog] = useState(false); const [qr, setQr] = useState(false); const [collect, setCollect] = useState<Tenant | null>(null);
+  const [log, setLog] = useState(false); const [qr, setQr] = useState(false);
   const date = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const header = <PageHeader title="Today" search={false} actions={phone ? undefined : <Btn kind="secondary" onClick={() => setQr(true)}><QrCode size={17} />Gate QR</Btn>} />;
   if (error) return <>{header}<ErrorState message={error} onRetry={reload} /></>;
@@ -39,12 +37,7 @@ export function Today() {
   const long = d.inside.filter(v => !isLate(v) && mins(v) >= LONG_VISIT);
 
   const out = async (v: Visitor) => { await signOutVisitor(v.id); toast(`${v.name.split(' ')[0]} marked as left`, { undo: () => { undoSignOut(v.id); } }); };
-  /** What the student still owes before they can be checked in (0 when nothing). */
-  const owes = (t: Tenant) => { const b = bookingOfTenant(t); return balanceOwed(b) ? balanceDue(b!) : 0; };
-  const checkIn = async (t: Tenant) => {
-    if (owes(t)) { setCollect(t); return; }
-    try { await setTenantStatus(t.id, 'in'); toast(`${t.name.split(' ')[0]} checked in to ${t.room}`); } catch (x) { toast((x as Error).message); }
-  };
+  const checkIn = async (t: Tenant) => { await setTenantStatus(t.id, 'in'); toast(`${t.name.split(' ')[0]} checked in to ${t.room}`); };
   const giveRoom = (t: Tenant) => nav(`/c/rooms?assign=${t.id}`);
 
   const tasks: Task[] = [
@@ -76,8 +69,8 @@ export function Today() {
     <div className="td-head"><h2>Ready to check in</h2><span className="td-count soft">{ready.length}</span><span className="grow" /><Link to="/c/tenants" className="td-link">All<ChevronRight size={15} /></Link></div>
     {ready.length ? <ul className="td-list">{ready.slice(0, phone ? 3 : 6).map(t => <li key={t.id} className="td-row">
       <Avatar user={{ name: t.name }} size={36} /><span className="grow min0"><b className="ink clamp1">{t.name}</b>
-        <span className="td-s">{t.roomId ? <>{t.room} · {t.type}{owes(t) ? <> · <span className="warn-t strong">Balance {ugx(owes(t))}</span></> : null}</> : <span className="warn-t">No room yet · {t.type}</span>}</span></span>
-      {t.roomId ? (owes(t) ? <Btn size="sm" kind="secondary" onClick={() => checkIn(t)}><Banknote size={15} />Collect</Btn> : <Btn size="sm" onClick={() => checkIn(t)}><LogIn size={15} />Check in</Btn>) : <Btn size="sm" kind="secondary" onClick={() => giveRoom(t)}>Give room</Btn>}</li>)}</ul>
+        <span className="td-s">{t.roomId ? <>{t.room} · {t.type}</> : <span className="warn-t">No room yet · {t.type}</span>}</span></span>
+      {t.roomId ? <Btn size="sm" onClick={() => checkIn(t)}><LogIn size={15} />Check in</Btn> : <Btn size="sm" kind="secondary" onClick={() => giveRoom(t)}>Give room</Btn>}</li>)}</ul>
       : <p className="td-empty"><BedDouble size={16} />{d.arriving.length ? 'Give the students above a room first.' : 'Nobody is due to arrive.'}</p>}
   </section>;
 
@@ -99,6 +92,5 @@ export function Today() {
       : <div className="td-grid fill">{strip}<div className="td-cols">{todo}<div className="td-side">{arriving}{inside}</div></div></div>}
     {log && <LogVisitor onClose={() => setLog(false)} />}
     {qr && <GateQR onClose={() => setQr(false)} />}
-    {collect && <CollectBalance t={collect} onClose={() => setCollect(null)} />}
   </>;
 }
