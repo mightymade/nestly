@@ -107,7 +107,7 @@ function Details({ uniId, via, setVia, onBack, onDone }: { uniId: string; via: '
   return <form className="stack" onSubmit={submit} noValidate>
     <div className="uni-line"><UniLogo uni={uni} size={28} /><span className="grow"><b>{uni.name}</b></span><button type="button" onClick={onBack}>Change</button></div>
     <div className="stack-sm"><Segmented label="How we check you are a student" full value={via} onChange={v => { setVia(v); setServerErr(null); }}
-      options={[{ value: 'email', label: <><Mail size={15} />University email</> }, { value: 'id', label: <><IdCard size={15} />Any email + student ID</> }]} />
+      options={[{ value: 'email', label: <><Mail size={15} />University email</> }, { value: 'id', label: <><IdCard size={15} />Student ID</> }]} />
       <p className="tiny muted">{byId ? 'For students who cannot get emails on their university address. Our team checks your ID, usually within a day. You can browse while you wait.' : `Fastest. You confirm by opening a link we send to your ${uni.domain} address.`}</p></div>
     <div className="f2">
       <Field id="su-name" label="Full name" error={show('name')}><TextInput id="su-name" autoComplete="name" value={f.name} onChange={set('name')} onBlur={blur('name')} error={show('name')} placeholder="Sarah Atim" /></Field>
