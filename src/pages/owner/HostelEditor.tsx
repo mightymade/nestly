@@ -215,7 +215,7 @@ function Photos({ h }: Ctx) {
     setLoading(pick.length);
     for (const f of pick) {
       if (!/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > 8 * 1024 * 1024) { setErr('Use JPG or PNG photos under 8 MB.'); setLoading(n => n - 1); continue; }
-      try { const url = await fitImage(f, 1280); setList(l => [...l, url]); } catch (x) { setErr((x as Error).message); }
+      try { const url = await fitImage(f, 1000); setList(l => [...l, url]); } catch (x) { setErr((x as Error).message); }
       setLoading(n => n - 1);
     }
     if (input.current) input.current.value = '';
@@ -308,7 +308,7 @@ function RoomsSec({ h, rooms, occupied }: Ctx) {
     {blocks.map(b => { const list = rooms.filter(r => r.block === b); return <div key={b} className="rl-block">
       <h3 className="rm-bhead">Block {b}<span>{list.length} rooms · {list.reduce((a, r) => a + r.beds, 0)} beds</span></h3>
       <div className="rl">{list.map(r => <div key={r.id} className="rl-row">
-        <span className="vroom">{r.no}</span><span className="grow min0 rl-text"><span className="small">{r.type}</span><span className="tiny muted">Floor {r.floor}</span></span>
+        <span className="vroom">{r.no}</span><span className="grow small clamp1">{r.type}</span><span className="tiny muted nowrap">Floor {r.floor}</span>
         {occupied.has(r.id) ? <Pill tone="primary">In use</Pill> : r.status === 'unavailable' ? <Pill tone="danger">Not available</Pill> : null}
         <button type="button" className="icon-btn" onClick={() => setEdit(r)} aria-label={`Edit ${r.no}`}><Pencil size={15} /></button>
         <button type="button" className="icon-btn" onClick={() => setDel(r)} disabled={occupied.has(r.id)} title={occupied.has(r.id) ? 'Someone is in this room' : undefined} aria-label={`Delete ${r.no}`}><Trash2 size={15} /></button>

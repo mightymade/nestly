@@ -41,7 +41,7 @@ export function Art({ hostel, alt = 0, className = '' }: { hostel: Hostel; alt?:
   // The owner's own photos come first. Hostels with no photos yet show a drawing.
   const src = hostel.photos?.length ? hostel.photos[alt] : alt === 0 ? hostel.photoUrl : undefined;
   if (src) return <div className={'art ' + className}>{!loaded && <div className="skel" style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
-    <img src={src} alt={hostel.name} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
+    <img src={src} alt={hostel.name} onLoad={() => setLoaded(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>;
   const v = [[hostel.floors, hostel.cols], [2, 6], [3, 3]][alt] ?? [hostel.floors, hostel.cols];
   return <div className={'art ' + className} dangerouslySetInnerHTML={{ __html: hostelArt(hostel.seed + alt, v[0], v[1]) }} />;
 }

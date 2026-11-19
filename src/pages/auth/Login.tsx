@@ -34,7 +34,7 @@ export function Login() {
         <PasswordInput id="login-pw" autoComplete="current-password" placeholder="••••••••" value={pw} onChange={e => setPw(e.target.value)} error={err?.field === 'password' ? err.msg : null} /></Field>
         <button type="button" className="field-aside" onClick={() => setForgot(true)}>Forgot password?</button></div>
       <Btn type="submit" block loading={busy}><LogIn size={18} />Log in</Btn>
-      <p className="small muted login-alt"><span className="la-q">New here?</span><span className="la-links"><Link to="/signup">Create a student account</Link><span aria-hidden="true">·</span><Link to="/owner/signup">List a hostel</Link></span></p>
+      <p className="small muted login-alt">New here? <Link to="/signup">Create a student account</Link><span aria-hidden="true">·</span><Link to="/owner/signup">List a hostel</Link></p>
     </form>
     {!live && <div className="demo-box stack-sm">
       <button className="row between w-full" onClick={() => setDemo(d => !d)} aria-expanded={demo}><span className="label">Try a demo account</span><span className="dd-pill on-surface" style={{ pointerEvents: 'none' }}>Choose<span className="chev"><ChevronDown size={15} /></span></span></button>

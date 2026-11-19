@@ -8,10 +8,6 @@ export interface User {
   id: string; role: Role; name: string; email: string; password: string;
   username?: string; phone?: string; photo?: string;
   universityId?: string; emailVerified: boolean; verifiedUntil?: string;
-  /** How a student is verified: 'email' (university email link) or 'id' (student ID checked by an admin). */
-  verifyVia?: 'email' | 'id'; studentNo?: string;
-  /** Student ID route only: where the admin's check is, and the reason if the ID was not accepted. */
-  idStatus?: 'none' | 'pending' | 'approved' | 'rejected'; idNote?: string;
   hostelId?: string; // custodians work at one hostel
   ownerStatus?: OwnerStatus; ownerNote?: string; // owners only
   /** The owner's own account. Students' booking fees are paid straight into it; Nestly never holds the money. */
@@ -57,7 +53,7 @@ export interface Notification { id: string; userId: string; kind: 'booking' | 'p
 export interface Invite { code: string; hostelId: string; invitedBy: string; email: string; name: string; used: boolean; at?: string; cancelled?: boolean }
 export interface Mail { id: string; to: string; subject: string; body: string; token?: string; when: string }
 
-export interface VerificationDoc { id: string; ownerId: string; hostelId?: string; kind: 'national_id' | 'selfie' | 'ownership' | 'trading_licence' | 'student_id'; fileName: string; url: string; uploadedAt: string; status: 'pending' | 'accepted' | 'rejected'; note?: string;
+export interface VerificationDoc { id: string; ownerId: string; hostelId?: string; kind: 'national_id' | 'selfie' | 'ownership' | 'trading_licence'; fileName: string; url: string; uploadedAt: string; status: 'pending' | 'accepted' | 'rejected'; note?: string;
   /** Live data only: a short-lived link to open a PDF. Images use `url`. */ link?: string }
 export interface Payout { id: string; ownerId: string; amount: number; method: 'mtn' | 'airtel' | 'bank'; to: string; status: 'scheduled' | 'paid'; date: string; bookings: string[] }
 export interface AuditEntry { id: string; at: string; actorId: string; actorRole: Role; action: string; target: string; detail: string }

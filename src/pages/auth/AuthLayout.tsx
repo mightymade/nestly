@@ -46,40 +46,32 @@ function AuthFoot() {
   </footer>;
 }
 
-export function AuthLayout({ title, sub, children, back, foot, ownerLink = true, wide, tall, onBack }: {
+export function AuthLayout({ title, sub, children, back, foot, ownerLink = true, wide, tall, centered, onBack }: {
   title: string; sub?: string; children: ReactNode; back?: string; foot?: ReactNode; ownerLink?: boolean;
   /** Wider form column on PC, for forms with fields side by side. */ wide?: boolean;
   /** Big photo header on phone (welcome page). Other pages use a short strip so the form fits. */ tall?: boolean;
-  /** No longer changes the layout; kept so existing pages still compile. */ centered?: boolean;
+  /** Phone only (log in page): a taller photo card with the logo mark, heading and sub heading centred just above the form. */ centered?: boolean;
   /** Back goes to the previous step instead of a page. */ onBack?: () => void;
 }) {
   const phone = useIsPhone();
   const backBtn = (cls: string) => onBack ? <button type="button" className={cls} onClick={onBack} aria-label="Back" title="Back"><ChevronLeft size={22} /></button>
     : back ? <Link to={back} className={cls} aria-label="Back" title="Back"><ChevronLeft size={22} /></Link> : null;
-  // Welcome page: the big photo with the three ways in.
-  if (phone && tall) return <div className="m-auth">
+  if (phone) return <div className={'m-auth' + (tall ? '' : ' compact') + (centered ? ' centered' : '')}>
     <div className="head">
       <img className="auth-photo" src={campus} alt="" /><div className="auth-shade" />
-      <div className="row rel" style={{ gap: 12 }}>{backBtn('auth-back on-photo')}<Link to="/welcome" aria-label="Nestly home"><Logo /></Link></div>
-      <div className="rel"><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
+      {centered ? <>
+        {backBtn('auth-back on-photo head-back')}
+      </> : <>
+        <div className="row rel" style={{ gap: 12 }}>{backBtn('auth-back on-photo')}<Link to="/welcome" aria-label="Nestly home"><Logo /></Link></div>
+        <div className="rel"><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
+      </>}
     </div>
-    <div className="body auth-in">{children}<AuthFoot /></div>
-  </div>;
-  // Every other phone page: a short photo band with the back button and logo, then one white sheet with the
-  // heading, the form, and the help links at the bottom. The band takes spare height (up to a cap) on short forms,
-  // so there is no big empty area above or below.
-  if (phone) return <div className="ma">
-    <header className="ma-band">
-      <img className="auth-photo" src={campus} alt="" /><div className="ma-shade" />
-      <div className="ma-bar">{backBtn('auth-back on-photo') ?? <span className="ma-gap" />}<Link to="/welcome" aria-label="Nestly home" className="ma-logo"><Logo /></Link><span className="ma-gap" /></div>
-    </header>
-    <main className="ma-sheet">
-      <div className="ma-in auth-in">
-        <div className="ma-title"><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
-        {children}
-      </div>
-      {foot ? <div className="sticky-foot">{foot}</div> : <div className="ma-end"><AuthFoot /></div>}
-    </main>
+    <div className="body auth-in">
+      {centered && <div className="intro">
+        <Link to="/welcome" aria-label="Nestly home" className="intro-logo"><Logo /></Link>
+        <h1>{title}</h1>
+      </div>}
+      {children}{foot && <div className="sticky-foot">{foot}</div>}{!foot && <AuthFoot />}</div>
   </div>;
   return <div className="frame"><div className="auth">
     <Hero />

@@ -13,34 +13,33 @@ import { AMENITIES } from '../../data/catalog';
 import type { VerificationDoc } from '../../data/types';
 import { timeAgo, ugx, ymd } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { ApiError, approveListing, approveOwner, approveStudentId, rejectStudentId, bookingSem, hostelSems, listReviewQueue, minPrice, rejectOwner, requestChanges, semDates, semName, uniSems, universityById } from '../../services/api';
+import { ApiError, approveListing, approveOwner, bookingSem, hostelSems, listReviewQueue, minPrice, rejectOwner, requestChanges, semDates, semName, uniSems, universityById } from '../../services/api';
 import { useData } from '../../services/useData';
 import { maskTo } from '../owner/shared';
 
 type Q = Awaited<ReturnType<typeof listReviewQueue>>;
-type OwnerItem = Q['owners'][number]; type ListingItem = Q['listings'][number]; type StudentItem = Q['students'][number];
-const DOC_NAME: Record<VerificationDoc['kind'], string> = { national_id: 'National ID', selfie: 'Selfie', ownership: 'Proof of ownership', trading_licence: 'Trading licence', student_id: 'Student ID' };
+type OwnerItem = Q['owners'][number]; type ListingItem = Q['listings'][number];
+const DOC_NAME: Record<VerificationDoc['kind'], string> = { national_id: 'National ID', selfie: 'Selfie', ownership: 'Proof of ownership', trading_licence: 'Trading licence' };
 export const waited = (iso: string) => { const m = Math.max(1, Math.round((Date.now() - +new Date(iso)) / 60000)); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} ${Math.round(m / 1440) === 1 ? 'day' : 'days'}`; };
 
 export function AdminReviews() {
   const phone = useIsPhone(); const [params, setParams] = useSearchParams();
   const { data, loading, error, reload } = useData(() => listReviewQueue(), []);
-  const tab = (params.get('tab') as 'owners' | 'listings' | 'students') ?? 'owners';
+  const tab = (params.get('tab') as 'owners' | 'listings') ?? 'owners';
   const [sel, setSel] = useState<string | null>(null);
   const setTab = (t: string) => { setSel(null); setParams({ tab: t }, { replace: true }); };
-  const owners = data?.owners ?? [], listings = data?.listings ?? [], students = data?.students ?? [];
+  const owners = data?.owners ?? [], listings = data?.listings ?? [];
   const items = tab === 'owners' ? owners.map(o => ({ id: o.user.id, title: o.user.name, sub: `${o.user.phone ?? ''} · ${o.hostels.length} ${o.hostels.length === 1 ? 'hostel' : 'hostels'} drafted`, since: o.since, avatar: o.user.name }))
-    : tab === 'students' ? students.map(x => ({ id: x.user.id, title: x.user.name, sub: `${x.uni?.short ?? ''} · ${x.user.studentNo ?? ''}`, since: x.since, avatar: x.user.name }))
     : listings.map(l => ({ id: l.hostel.id, title: l.hostel.name, sub: `${l.owner?.name ?? ''} · ${universityById(l.hostel.uni)?.short}`, since: l.since, avatar: l.hostel.name }));
   const current = sel ?? (phone ? null : items[0]?.id ?? null);
-  const o = tab === 'owners' ? owners.find(x => x.user.id === current) : undefined; const l = tab === 'listings' ? listings.find(x => x.hostel.id === current) : undefined; const st = tab === 'students' ? students.find(x => x.user.id === current) : undefined;
-  const tabs = <Segmented label="Review type" value={tab} onChange={setTab} options={[{ value: 'owners', label: 'Owners', count: owners.length }, { value: 'listings', label: 'Listings', count: listings.length }, { value: 'students', label: 'Students', count: students.length }]} />;
+  const o = owners.find(x => x.user.id === current); const l = listings.find(x => x.hostel.id === current);
+  const tabs = <Segmented label="Review type" value={tab} onChange={setTab} options={[{ value: 'owners', label: 'Owners', count: owners.length }, { value: 'listings', label: 'Listings', count: listings.length }]} />;
   const queue = error ? <ErrorState message={error} onRetry={reload} /> : loading && !data ? <Skeleton rows={3} h={64} />
-    : !items.length ? <EmptyState bare icon={<ClipboardCheck size={24} />} title="Nothing to review" text={tab === 'owners' ? 'New owners show up here when they send their ID.' : tab === 'students' ? 'Students who sign up with a student ID show up here.' : 'Listings show up here when an owner submits them.'} />
+    : !items.length ? <EmptyState bare icon={<ClipboardCheck size={24} />} title="Nothing to review" text={tab === 'owners' ? 'New owners show up here when they send their ID.' : 'Listings show up here when an owner submits them.'} />
     : <div className="rv-q">{items.map(i => <button key={i.id} className={'rv-item' + (current === i.id ? ' on' : '')} onClick={() => setSel(i.id)}>
         <Avatar user={{ name: i.avatar }} size={38} /><span className="min0 grow"><b className="ink clamp1">{i.title}</b><span className="tiny muted clamp1">{i.sub}</span></span>
         <span className="tiny warn-t strong nowrap">{waited(i.since)}</span></button>)}</div>;
-  const review = o ? <OwnerReview key={o.user.id} o={o} onDone={() => setSel(null)} /> : l ? <ListingReview key={l.hostel.id} l={l} onDone={() => setSel(null)} /> : st ? <StudentReview key={st.user.id} s={st} onDone={() => { setSel(null); reload(); }} /> : null;
+  const review = o ? <OwnerReview key={o.user.id} o={o} onDone={() => setSel(null)} /> : l ? <ListingReview key={l.hostel.id} l={l} onDone={() => setSel(null)} /> : null;
 
   if (phone) {
     if (review) return <><button className="rv-back" onClick={() => setSel(null)}><ChevronLeft size={18} />Back to the queue</button>{review}</>;
@@ -97,32 +96,6 @@ function OwnerReview({ o, onDone }: { o: OwnerItem; onDone: () => void }) {
     {o.hostels.length > 0 && <><h3 className="rv-h">Hostels they have started</h3><div className="stack-sm">{o.hostels.map(h => <div key={h.id} className="staff-row"><span className="vroom">{h.status === 'in_review' ? 'In review' : h.status}</span><b className="ink small grow clamp1">{h.name || 'Untitled'}</b></div>)}</div></>}
     {rej && <ReasonDialog title={`Reject ${u.name.split(' ')[0]}?`} intro="The owner sees this reason and can fix it and send again." quick={REASONS} cta="Reject"
       onClose={() => setRej(false)} onSend={async r => { await rejectOwner(u.id, r); toast(`${u.name} was told what to fix`); onDone(); }} />}
-  </div>;
-}
-
-const ID_REASONS = ['ID photo is blurry', 'Name does not match the ID', 'Student number does not match the ID', 'ID has expired', 'Not a student ID of this university'];
-function StudentReview({ s, onDone }: { s: StudentItem; onDone: () => void }) {
-  const toast = useToast(); const [rej, setRej] = useState(false); const [busy, setBusy] = useState(false);
-  const u = s.user;
-  const approve = async () => { setBusy(true); try { await approveStudentId(u.id); toast(`${u.name} can now book. The ID photo was deleted.`); onDone(); } finally { setBusy(false); } };
-  return <div className="rv-body">
-    <div className="row between start wrap" style={{ gap: 12 }}><div className="row-sm"><Avatar user={u} size={48} /><div><h2 style={{ fontSize: 20 }}>{u.name}</h2><p className="small muted">{u.email}</p></div></div>
-      <div className="row rv-acts" style={{ gap: 8 }}><Btn kind="secondary" onClick={() => setRej(true)}><X size={16} />Reject</Btn><Btn loading={busy} disabled={!s.doc} onClick={approve}><Check size={16} />Approve</Btn></div></div>
-    <Checks items={[
-      { ok: !!s.doc, text: s.doc ? 'Student ID photo uploaded' : 'No student ID photo yet' },
-      { ok: true, text: `Student number ${u.studentNo ?? ''} is not used by another account` },
-      { ok: !!s.uni, text: s.uni ? `Says they study at ${s.uni.name}` : 'No university chosen' },
-    ]} />
-    <div className="rv-facts">
-      <div><span className="tiny muted">Student number</span><b className="small ink">{u.studentNo}</b></div>
-      <div><span className="tiny muted">University</span><b className="small ink">{s.uni?.short}</b></div>
-      <div><span className="tiny muted">Sent</span><b className="small ink">{timeAgo(s.since)}</b></div>
-    </div>
-    <h3 className="rv-h">Student ID</h3>
-    <div className="rv-docs">{s.doc ? <DocView d={s.doc} /> : <p className="muted small">No photo uploaded yet.</p>}</div>
-    <p className="tiny muted row-sm"><ShieldCheck size={13} />Check the name, student number, university and expiry date on the card. The photo is deleted as soon as you decide.</p>
-    {rej && <ReasonDialog title={`Reject ${u.name.split(' ')[0]}'s ID?`} intro="The student sees this reason and can send a new photo." quick={ID_REASONS} cta="Reject"
-      onClose={() => setRej(false)} onSend={async r => { await rejectStudentId(u.id, r); toast(`${u.name} was told what to fix`); onDone(); }} />}
   </div>;
 }
 

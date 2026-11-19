@@ -67,7 +67,7 @@ function Dashboard({ ownerId }: { ownerId: string }) {
   const kpis = <div className="card sstrip oh-strip" aria-label="Summary">
     <Link to="/o/hostels" className="sc"><span className="sc-l"><BedDouble size={13} />Next semester</span>
       <span className="sc-v num">{k.booked}<small>of {k.total} beds · {pct}%</small></span>
-      <span className="sc-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></span></Link>
+      <span className="sc-bar" role="progressbar" aria-label={`${pct}% of beds taken`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></span></Link>
     <Link to="/o/bookings" className="sc"><span className="sc-l"><CalendarCheck size={13} />{one ? 'Bookings this month' : 'Bookings this week'}</span>
       <span className="sc-v num">{one ? one.month : d.kpi.week}</span>
       {week === null ? <span className="sc-s">at {one!.hostel.name}</span>
@@ -84,7 +84,7 @@ function Dashboard({ ownerId }: { ownerId: string }) {
     <div className="td-head"><h2>To do</h2>{todo.length > 0 && <span className="td-count">{todo.length}</span>}</div>
     {todo.length ? <ul className="td-list">{todo.slice(0, phone && !allTodo ? 4 : undefined).map(t => <li key={t.key} className={'td-task ' + t.tone}>
       <span className="td-ic">{t.review ? <MessageSquare size={17} /> : t.key === 'sub' ? <Wallet size={17} /> : t.key.startsWith('so') ? <BedDouble size={17} /> : t.key.startsWith('cu') ? <UserPlus size={17} /> : <AlertTriangle size={17} />}</span>
-      <span className="grow min0"><span className="td-t"><b>{t.text}</b></span><span className="td-s clamp2">{t.sub}</span></span>
+      <span className="grow min0"><span className="td-t"><b>{t.text}</b></span><span className="td-s clamp1">{t.sub}</span></span>
       {t.review ? <Btn size="sm" kind="secondary" onClick={() => setReply(t.review!)}>{t.cta}</Btn> : <Link to={t.to!} className={'btn btn-sm ' + (t.tone === 'bad' ? 'btn-primary' : 'btn-secondary')}>{t.cta}</Link>}</li>)}</ul>
       : <p className="td-clear"><CheckCircle2 size={18} />You're all caught up.</p>}
     {phone && todo.length > 4 && <button className="td-more" onClick={() => setAllTodo(a => !a)}>{allTodo ? 'Show less' : `Show all ${todo.length}`}<ChevronRight size={15} style={{ transform: allTodo ? 'rotate(-90deg)' : 'rotate(90deg)' }} /></button>}
@@ -120,7 +120,7 @@ function Dashboard({ ownerId }: { ownerId: string }) {
 
   const recent = <section className="card oh-card" aria-label="Latest activity">
     <div className="td-head"><h2>Latest activity</h2></div>
-    {d.recent.length ? <ul className="act-list">{d.recent.slice(0, phone ? 4 : 6).map((r, i) => <li key={i}><span className={'icon-tile sm ' + (r.kind === 'booking' ? 'primary' : 'success')}>{r.kind === 'booking' ? <CalendarCheck size={16} /> : <KeyRound size={16} />}</span>
+    {d.recent.length ? <ul className="act-list" tabIndex={0} aria-label="Latest activity">{d.recent.slice(0, phone ? 4 : 6).map((r, i) => <li key={i}><span className={'icon-tile sm ' + (r.kind === 'booking' ? 'primary' : 'success')}>{r.kind === 'booking' ? <CalendarCheck size={16} /> : <KeyRound size={16} />}</span>
       <span className="grow small">{r.text}</span><span className="tiny muted nowrap">{timeAgo(r.at)}</span></li>)}</ul> : <p className="small muted">No activity yet.</p>}
   </section>;
 

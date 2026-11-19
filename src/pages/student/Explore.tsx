@@ -13,7 +13,7 @@ import { AMENITIES } from '../../data/catalog';
 import type { Hostel } from '../../data/types';
 import { ugx } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { allUniversities, listHostels, minPrice, savedIds, universityById, verifyNote } from '../../services/api';
+import { allUniversities, listHostels, minPrice, savedIds, universityById } from '../../services/api';
 import { useUser } from '../../services/session';
 import { UniLogo } from '../../components/UniLogo';
 import { useData } from '../../services/useData';
@@ -73,8 +73,8 @@ export function Explore() {
 
     {me && uniId !== home && <div className="banner warn"><GraduationCap size={18} className="ic" /><span className="grow">You are looking at hostels near <b>{uni.short}</b>, not your university.</span>
       <Btn kind="secondary" size="sm" onClick={() => pickUni(home)}><Undo2 size={15} />Back to {universityById(home)?.short}</Btn></div>}
-    {me && !me.emailVerified && <div className="banner primary"><MailWarning size={18} className="ic" /><span className="grow"><b>{verifyNote(me)}</b> You can browse now.</span>
-      <Link to="/signup" className="btn btn-primary btn-sm">{me.verifyVia === 'id' ? (me.idStatus === 'rejected' ? 'Send new photo' : 'See status') : 'Confirm email'}</Link></div>}
+    {me && !me.emailVerified && <div className="banner primary"><MailWarning size={18} className="ic" /><span className="grow"><b>Confirm your student email to book.</b> You can browse now.</span>
+      <Link to="/signup" className="btn btn-primary btn-sm">Confirm email</Link></div>}
 
         <div className="results-head"><span className="count">{loading && !data ? 'Loading hostels' : <>Showing <b className="num">{list.length}</b>{list.length === 1 ? 'hostel' : 'hostels'}{q && <> matching "{q}"</>}</>}</span>
           <Dropdown label="Sort hostels" icon={ArrowUpDown} value={sort} options={SORTS} onChange={setSort} align="right" /></div>
@@ -106,8 +106,8 @@ export function Explore() {
 
     {me && uniId !== home && <div className="banner warn"><GraduationCap size={18} className="ic" /><span className="grow">You are looking at hostels near <b>{uni.short}</b>, not your university.</span>
       <Btn kind="secondary" size="sm" onClick={() => pickUni(home)}><Undo2 size={15} />Back to {universityById(home)?.short}</Btn></div>}
-    {me && !me.emailVerified && <div className="banner primary"><MailWarning size={18} className="ic" /><span className="grow"><b>{verifyNote(me)}</b> You can browse now.</span>
-      <Link to="/signup" className="btn btn-primary btn-sm">{me.verifyVia === 'id' ? (me.idStatus === 'rejected' ? 'Send new photo' : 'See status') : 'Confirm email'}</Link></div>}
+    {me && !me.emailVerified && <div className="banner primary"><MailWarning size={18} className="ic" /><span className="grow"><b>Confirm your student email to book.</b> You can browse now.</span>
+      <Link to="/signup" className="btn btn-primary btn-sm">Confirm email</Link></div>}
 
     {error ? <ErrorState message={error} onRetry={reload} />
       : loading && !data ? <div className="x-list">{Array.from({ length: 5 }, (_, i) => <div key={i} className="skel" style={{ height: 124 }} />)}</div>

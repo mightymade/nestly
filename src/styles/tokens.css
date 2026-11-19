@@ -7,7 +7,7 @@
   --surface-2: #F6F7FB;
   --surface-3: #EEF0F6;
   --line: #ECEEF4; --line-strong: #C9CEDB;
-  --field-line: #878DA1; --field-hover: #6B7187; /* 3:1 against the page, so fields are easy to see */
+  --field-line: #878DA1; --field-hover: #6B7187;
   --ink: #1A1C29;
   --text: #3B3F51;
   --muted: #676C82; /* darker than the reference grey so captions pass 4.5:1 contrast */
@@ -55,7 +55,7 @@
   --muted: #9298AE;
   --primary: #6B76FF;
   --primary-hover: #7C86FF;
-  --primary-fill: #525CEB; --primary-fill-hover: #4A54E2; /* filled buttons: white text needs 4.5:1 */
+  --primary-fill: #525CEB; --primary-fill-hover: #4A54E2;
   --primary-soft: #262B52;
   --primary-ink: #AEB4FF;
   --primary-glow: rgba(107, 118, 255, .35);

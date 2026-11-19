@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, Check, KeyRound } from 'lucide-react';
+import { ArrowRight, Building2, Check } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { live } from '../../services/supabase';
@@ -34,8 +34,6 @@ function Code({ onFound }: { onFound: (i: Inv) => void }) {
     <Field id="inv-code" label="Invite code" error={err} hint={live ? 'It looks like SOSO-7128. The hostel owner sends it to you.' : 'It looks like HILL-4821. Demo code: HILL-4821'}>
       <TextInput id="inv-code" value={code} onChange={e => setCode(e.target.value.toUpperCase())} error={err} autoCapitalize="characters" autoComplete="off" spellCheck={false} style={{ height: 56, fontSize: 20, textAlign: 'center', letterSpacing: '.18em', fontWeight: 800 }} placeholder="XXXX-0000" /></Field>
     <Btn type="submit" block loading={busy}>Check code<ArrowRight size={18} /></Btn>
-    <div className="ma-help"><span className="icon-tile primary sm"><KeyRound size={16} /></span><span><b>No code yet?</b>Ask the hostel owner. They make one in Nestly under Staff, and it works for 7 days.</span></div>
-    <p className="small muted login-alt"><span className="la-q">Already joined, or a student?</span><span className="la-links"><Link to="/login">Log in</Link><span aria-hidden="true">·</span><Link to="/signup">Create a student account</Link></span></p>
   </form>;
 }
 

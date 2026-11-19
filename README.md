@@ -13,7 +13,7 @@ Built by Group 1 for **MGT3151 E-Business, E-Commerce and E-Governance** at Ugan
 | **Payments** | Flutterwave sandbox only. No real money moves. |
 | **Data** | All names, hostels and payments are fictitious. |
 
-![Explore page: hostels near UCU Mukono on a list and a map](explore.png)
+![Explore page: hostels near UCU Mukono on a list and a map](docs/screenshots/explore.png)
 
 ---
 
@@ -61,23 +61,23 @@ Nestly covers the full e-commerce workflow, from finding a room to reviewing the
 
 | Hostel page | Paying the booking fee |
 |---|---|
-| ![Hostel page with photos, room types and prices](hostel-page.png) | ![Mobile money payment screen](payment.png) |
+| ![Hostel page with photos, room types and prices](docs/screenshots/hostel-page.png) | ![Mobile money payment screen](docs/screenshots/payment.png) |
 | **Booking confirmed with a reference** | **My bookings** |
-| ![Booking confirmed with reference NST-72517](booked.png) | ![Student bookings with status tracker](student-bookings.png) |
+| ![Booking confirmed with reference NST-72517](docs/screenshots/booked.png) | ![Student bookings with status tracker](docs/screenshots/student-bookings.png) |
 
 ### Owners, custodians and administrators
 
 | Owner overview | Owner money page |
 |---|---|
-| ![Owner overview with occupancy and to-do list](owner-overview.png) | ![Owner money page listing every booking fee](owner-money.png) |
+| ![Owner overview with occupancy and to-do list](docs/screenshots/owner-overview.png) | ![Owner money page listing every booking fee](docs/screenshots/owner-money.png) |
 | **Custodian: today's arrivals** | **Administrator: work queue and activity** |
-| ![Custodian Today page with arrivals and rooms](custodian-today.png) | ![Administrator overview](admin-overview.png) |
+| ![Custodian Today page with arrivals and rooms](docs/screenshots/custodian-today.png) | ![Administrator overview](docs/screenshots/admin-overview.png) |
 
 ### On a phone
 
 Every screen is designed for a 360-pixel phone first. From left: Explore, a hostel page, visitor sign-in at the gate, and the custodian's Today page.
 
-![Nestly on a phone](phone-screens.png)
+![Nestly on a phone](docs/screenshots/phone-screens.png)
 
 ---
 
@@ -90,8 +90,8 @@ You need **Node.js 18 or newer** (we use Node.js 22). Exact library versions are
 This runs every screen with sample data kept in your browser. After installing, it works offline.
 
 ```bash
-git clone https://github.com/mightymade/nestly.git
-cd nestly
+git clone https://github.com/mightymade/Nestly-v0.git
+cd Nestly-v0
 npm ci
 npm run dev
 ```
@@ -106,8 +106,8 @@ This is the set-up used by the live prototype and our tests.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Follow [`supabase/SETUP.md`](supabase/SETUP.md) step by step:
-   - run the files in `supabase/migrations` in order (`0001` to `0010`), then `supabase/sample_data.sql`
-   - deploy the three server functions, `payments`, `accept-invite` and `student-signup`
+   - run the files in `supabase/migrations` in order (`0001` to `0009`), then `supabase/sample_data.sql`
+   - deploy the two server functions, `payments` and `accept-invite`
    - add your Flutterwave **sandbox** keys as function secrets
 3. Copy `.env.example` to `.env` and fill in your project's URL and **anon** (public) key.
 4. Run `npm ci`, then `npm run dev`.
@@ -120,7 +120,8 @@ This is the set-up used by the live prototype and our tests.
 |---|---|
 | `npm run build` | Checks the code for errors, then builds the site into `dist/` |
 | `npm run preview` | Serves the built site |
-| `npm run build:single` | Builds the whole app as one HTML file in `dist-single/`, for sharing an offline preview |
+| `npm test` | Runs test cases T01 to T10 (see [Tests](#tests)) |
+| `npm run test:usability` | Runs the phone, laptop and accessibility checks |
 
 ---
 
@@ -131,38 +132,41 @@ All accounts are fictitious. The password for every account is **`nestly123`**.
 | Role | Log in with | Try this |
 |---|---|---|
 | Student | `sarah.atim@ucu.ac.ug` | Find a room, book it, pay in the sandbox, cancel, review |
-| Student waiting for ID check | `brian.ssemwanga@gmail.com` | See what a student on the student ID route sees before approval |
 | Custodian | `peter.k` | Give a room, record the balance, check in, open the gate QR |
 | Owner | `grace.n` | Check bookings and fees, invite staff, pay the subscription |
 | Owner awaiting approval | `daniel.o` | See what a new owner sees before approval |
 | Administrator | `admin` | Approve owners and listings, read the activity log |
 
-In demo mode you can also use the custodian invite code `HILL-4821`, and pay with a phone number ending in `0000` to see a declined payment. The demo box on the login page has **Reset demo** to start fresh.
-
 ---
 
 ## Tests
 
-The prototype was tested in a real browser (Playwright) against the database, with a screenshot for every step.
+The `tests` folder has two scripts that drive a real browser (Playwright) and check the database after each step.
 
-| Check | Result (18 Nov 2026) |
-|---|---|
-| 10 test cases: 7 positive, 2 validation, 1 access control | **10 of 10 pass** |
-| 48 screens on phone and laptop, WCAG 2.1 A and AA, keyboard, slow 4G | **0 accessibility violations, 0 layout faults** |
+| Script | Checks | Result (18 Nov 2026) |
+|---|---|---|
+| `run-tests.cjs` | 10 test cases: 7 positive, 2 validation, 1 access control | **10 of 10 pass** |
+| `usability-checks.cjs` | 48 screens on phone and laptop; WCAG 2.1 A and AA; keyboard; slow 4G | **0 accessibility violations, 0 layout faults** |
 
-The test scripts and evidence are in the group repository, [Nestly-v0](https://github.com/mightymade/Nestly-v0).
+Evidence from the last run, with a screenshot for every step, is in [`tests/evidence`](tests/evidence). How to run the tests yourself is in [`tests/README.md`](tests/README.md).
+
+```bash
+npx playwright install chromium      # once
+npm run dev
+BASE=http://127.0.0.1:5173 PGURL=<database address> npm test
+```
 
 ---
 
 ## How it is built
 
-![Architecture: users' devices, the web app on Vercel, Supabase and outside services](architecture.png)
+![Architecture: users' devices, the web app on Vercel, Supabase and outside services](docs/screenshots/architecture.png)
 
 | Part | Technology | Job |
 |---|---|---|
 | Web app | React 18, TypeScript, Vite | All screens; hosted on Vercel |
 | Database | PostgreSQL on Supabase | 19 tables; row-level security decides what each user can see |
-| Logins | Supabase Auth | Sign-up, login and email confirmation; student ID route checked by an admin |
+| Logins | Supabase Auth | Sign-up, login and email confirmation |
 | Files | Supabase Storage | Public hostel photos; private owner documents |
 | Payments | Supabase Edge Function + Flutterwave sandbox | Starts each charge and verifies it before a booking is confirmed |
 | Maps | Leaflet + OpenStreetMap | Hostel locations and walking routes |
@@ -174,7 +178,7 @@ The test scripts and evidence are in the group repository, [Nestly-v0](https://g
 ## Project structure
 
 ```
-nestly/
+Nestly-v0/
 ├── src/
 │   ├── pages/            Screens for each role: student, owner, custodian, admin, auth
 │   ├── components/       Shared building blocks (buttons, cards, tables, maps)
@@ -183,11 +187,11 @@ nestly/
 │   └── data/             Data types and sample catalogue
 ├── supabase/
 │   ├── migrations/       Database tables, security rules and functions (run in order)
-│   ├── functions/        Server code: payments, accept-invite and student-signup
+│   ├── functions/        Server code: payments and accept-invite
 │   ├── sample_data.sql   Fictitious sample data
 │   └── SETUP.md          Step-by-step database set-up
-├──      Images used in this README
-├── .github/              Pull request template
+├── tests/                Test scripts and evidence
+├── docs/                 Screenshots and the team's contribution record
 └── package.json          Scripts and library versions
 ```
 
@@ -208,7 +212,7 @@ nestly/
 | 9 | Made Humphrey | Admin console; project set-up and integration (team lead) |
 | 10 | Katawera Noel Ephraim | Backend core: business rules and database security |
 
-Each member's work, with their pull requests, is in the group repository, [Nestly-v0](https://github.com/mightymade/Nestly-v0).
+Who did what in each phase, with the task log, is in [`docs/CONTRIBUTIONS.md`](docs/CONTRIBUTIONS.md).
 
 ---
 

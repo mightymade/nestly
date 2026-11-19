@@ -1,4 +1,4 @@
-import { GraduationCap, ArrowRight, Building2, CheckCircle2, ClipboardCheck, Flag, History, UserCheck, Wallet } from 'lucide-react';
+import { ArrowRight, Building2, CheckCircle2, ClipboardCheck, Flag, History, UserCheck, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
@@ -26,7 +26,6 @@ export function AdminOverview() {
   const items: [number, string, string, typeof Flag, string, boolean][] = [
     [q.flags, q.flags === 1 ? 'open report' : 'open reports', '/a/flags', Flag, 'safety and payment problems first', true],
     [q.owners, q.owners === 1 ? 'owner waiting for review' : 'owners waiting for review', '/a/reviews?tab=owners', UserCheck, d.ownersSince ? `oldest has waited ${waited(d.ownersSince)}` : '', false],
-    [q.students, q.students === 1 ? 'student ID waiting for review' : 'student IDs waiting for review', '/a/reviews?tab=students', GraduationCap, q.studentsSince ? `oldest has waited ${waited(q.studentsSince)}` : '', false],
     [q.listings, q.listings === 1 ? 'listing waiting for review' : 'listings waiting for review', '/a/reviews?tab=listings', ClipboardCheck, q.oldest ? `oldest has waited ${waited(q.oldest)}` : '', false],
     [m.late, m.late === 1 ? 'owner is late paying' : 'owners are late paying', '/a/subscriptions', Wallet, `owe ${ugx(m.owed)} in total`, false],
   ];
@@ -38,7 +37,7 @@ export function AdminOverview() {
   </Card>;
   const paidShare = m.owners ? Math.round(((m.paid + m.due) / m.owners) * 100) : 0;
   const strip = <div className="card sstrip oh-strip ad-strip" aria-label="Nestly at a glance">
-    <Link to="/a/subscriptions?tab=payments" className="sc"><span className="sc-l">Paid this month</span><span className="sc-v num">{ugx(m.month)}</span>
+    <Link to="/a/subscriptions?tab=payments" className="sc"><span className="sc-l">Subscriptions this month</span><span className="sc-v num">{ugx(m.month)}</span>
       <span className="sc-s">Last month {ugx(m.lastMonth)}</span></Link>
     <Link to="/a/subscriptions?tab=all" className="sc"><span className="sc-l">Owners paid up</span><span className="sc-v num">{m.paid + m.due}<small>of {m.owners}</small></span>
       <span className="sc-bar"><i style={{ width: `${paidShare}%` }} /></span></Link>

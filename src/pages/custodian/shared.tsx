@@ -105,9 +105,9 @@ export function VisitorScreen({ hid, onDone, remember }: { hid: string; onDone: 
         <Field id="vq-host" label="Who are you visiting?" error={tried && !f.host ? 'Choose the person you came to see.' : null}><HostPicker hid={hid} id="vq-host" value={f.host} onChange={host => setF({ ...f, host })} /></Field>
         <Field id="vq-phone" label="Your phone number" error={tried && !phoneOk ? 'Enter a 10-digit number, like 0772 123 456.' : null} hint="The custodian may call if they need to reach you.">
           <TextInput id="vq-phone" type="tel" inputMode="tel" autoComplete="tel" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} error={tried && !phoneOk ? 'x' : null} placeholder="0772 123 456" /></Field>
-        <label className={'check small vp-agree' + (tried && !f.ok ? ' bad' : '')}><input type="checkbox" checked={f.ok} onChange={e => setF({ ...f, ok: e.target.checked })} aria-describedby={tried && !f.ok ? 'vq-ok-err' : undefined} />
+        <label className={'check small vp-agree' + (tried && !f.ok ? ' bad' : '')}><input type="checkbox" checked={f.ok} onChange={e => setF({ ...f, ok: e.target.checked })} />
           <span>I agree that {h.name} keeps my name and visit time for security.</span></label>
-        {tried && !f.ok && <span id="vq-ok-err" className="err" role="alert">Tick the box to agree first.</span>}
+        {tried && !f.ok && <span className="err" role="alert">Tick the box to agree first.</span>}
         <Btn type="submit" block loading={busy}><LogIn size={16} />Sign in</Btn>
         <p className="tiny muted center row-sm" style={{ justifyContent: 'center' }}><ShieldCheck size={13} />Only {h.name} can see this. Powered by Nestly.</p>
       </form>}
