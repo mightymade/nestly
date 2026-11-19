@@ -39,7 +39,9 @@ export type HostelStatus = 'draft' | 'in_review' | 'live' | 'changes_requested' 
 export interface Review { id: string; hostelId: string; /** The student who wrote it and the stay it is about. */ userId?: string; bookingId?: string; who: string; stars: number; when: string; text: string; reply?: string; /** Hidden by an admin after a report. */ hidden?: boolean }
 
 export type BookingStatus = 'pending' | 'paid' | 'checked-in' | 'completed' | 'rated' | 'cancelled';
-export interface Booking { id: string; userId: string; hostelId: string; room: string; roomNo?: string; sem: string; fee: number; status: BookingStatus; paidOn: string; cancelUntil?: string; at?: string; payRef?: string }
+export interface Booking { id: string; userId: string; hostelId: string; room: string; roomNo?: string; sem: string; fee: number; status: BookingStatus; paidOn: string; cancelUntil?: string; at?: string; payRef?: string;
+  /** Rent for the semester, fixed when the student booked. The booking fee counts toward it. */ rent?: number;
+  /** When the custodian recorded the balance (rent less booking fee) as received. `null` means still owed. Only set once the booking is tracked. */ rentPaidOn?: string | null }
 
 export interface Visitor { id: string; hostelId: string; name: string; room: string; /** The resident they came to see. */ host?: string; phone?: string; tin: string; tout: string | null; via: 'QR' | 'Custodian'; date: string }
 /** `room` is the room number shown to people. A tenant with no `roomId` has booked but has not been given a room yet. */

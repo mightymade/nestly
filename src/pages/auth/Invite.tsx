@@ -13,7 +13,7 @@ type Inv = Awaited<ReturnType<typeof lookupInvite>>;
 
 export function Invite() {
   const [inv, setInv] = useState<Inv | null>(null);
-  return <AuthLayout title={inv ? 'Set up your account' : 'Join as a custodian'} sub={inv ? undefined : 'Enter the invite code the hostel owner sent you.'} back={inv ? undefined : '/welcome'} onBack={inv ? () => setInv(null) : undefined} wide={!!inv} ownerLink={false}>
+  return <AuthLayout title={inv ? 'Set up your account' : 'Join as a custodian'} sub={inv ? undefined : 'Enter the invite code the hostel owner sent you.'} back={inv ? undefined : '/welcome'} onBack={inv ? () => setInv(null) : undefined} wide={!!inv} ownerLink={false} centered>
     <Steps steps={['Invite code', 'Your account']} at={inv ? 2 : 1} />
     {inv ? <Account inv={inv} /> : <Code onFound={setInv} />}
   </AuthLayout>;
@@ -32,7 +32,7 @@ function Code({ onFound }: { onFound: (i: Inv) => void }) {
   const go = (e: FormEvent) => { e.preventDefault(); void check(code); };
   return <form className="stack" onSubmit={go} noValidate>
     <Field id="inv-code" label="Invite code" error={err} hint={live ? 'It looks like SOSO-7128. The hostel owner sends it to you.' : 'It looks like HILL-4821. Demo code: HILL-4821'}>
-      <TextInput id="inv-code" value={code} onChange={e => setCode(e.target.value.toUpperCase())} error={err} autoCapitalize="characters" style={{ letterSpacing: '.12em', fontWeight: 700 }} placeholder="XXXX-0000" /></Field>
+      <TextInput id="inv-code" value={code} onChange={e => setCode(e.target.value.toUpperCase())} error={err} autoCapitalize="characters" autoComplete="off" spellCheck={false} style={{ height: 56, fontSize: 20, textAlign: 'center', letterSpacing: '.18em', fontWeight: 800 }} placeholder="XXXX-0000" /></Field>
     <Btn type="submit" block loading={busy}>Check code<ArrowRight size={18} /></Btn>
   </form>;
 }
@@ -68,7 +68,7 @@ function Account({ inv }: { inv: Inv }) {
       <Field id="iv-name" label="Full name" error={err.name}><TextInput id="iv-name" value={f.name} onChange={set('name')} error={err.name} autoComplete="name" /></Field>
       <Field id="iv-user" label="Username" error={err.username} hint={avail === true ? <span className="ok-text"><Check size={13} /> Available</span> : avail === false ? <span className="err">Taken. Try another.</span> : 'Log in with this or your email.'}>
         <TextInput id="iv-user" value={f.username} onChange={e => setF({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') })} error={err.username} autoComplete="username" placeholder="agnes.n" /></Field>
-      <div className="span stack" style={{ gap: 10 }}><Field id="iv-pw" label="Password" error={err.password}><PasswordInput id="iv-pw" value={f.password} onChange={set('password')} error={err.password} autoComplete="new-password" /></Field>
+      <div className="span stack" style={{ gap: 10 }}><Field id="iv-pw" label="Password" error={err.password}><PasswordInput id="iv-pw" placeholder="••••••••" value={f.password} onChange={set('password')} error={err.password} autoComplete="new-password" /></Field>
         {!err.password && <PasswordStrength value={f.password} />}</div>
     </div>
     {err.form && <span className="err">{err.form}</span>}

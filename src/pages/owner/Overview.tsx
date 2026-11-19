@@ -106,14 +106,14 @@ function Dashboard({ ownerId }: { ownerId: string }) {
       </Link>; })}</div>
   </section>;
 
-  const max = Math.max(1, f.views);
+  const max = Math.max(1, f.views, f.saves, f.booked); // a booking can arrive with no recorded view, so never let a bar pass 100%
   const funnel = <section className="card oh-card oh-funnel" aria-label="How students find you">
     <div className="td-head"><h2>How students find you</h2><span className="grow" /><span className="tiny muted">This month</span></div>
     <div className="oh-funnel">{([['Viewed your listing', f.views, Eye], ['Saved it', f.saves, Heart], ['Booked', f.booked, CalendarCheck]] as const).map(([l, v, I], i, arr) =>
       <div key={l} className="oh-step">
         <div className="oh-step-top"><span className="row-sm"><I size={15} />{l}</span><b className="num ink">{v.toLocaleString('en-US')}</b></div>
-        <span className="oh-fbar"><i style={{ width: `${Math.max(3, (v / max) * 100)}%`, opacity: 1 - i * 0.22 }} /></span>
-        {i > 0 && arr[i - 1]![1] > 0 && <span className="tiny muted">{Math.round((v / arr[i - 1]![1]) * 100)}% of {i === 1 ? 'viewers saved it' : 'savers booked'}</span>}
+        <span className="oh-fbar"><i style={{ width: `${Math.min(100, Math.max(3, (v / max) * 100))}%`, opacity: 1 - i * 0.22 }} /></span>
+        {i > 0 && arr[i - 1]![1] > 0 && <span className="tiny muted">{Math.min(100, Math.round((v / arr[i - 1]![1]) * 100))}% of {i === 1 ? 'viewers saved it' : 'savers booked'}</span>}
       </div>)}</div>
     {d.tips.length > 0 && <ul className="oh-tips">{d.tips.map(t => <li key={t}><Lightbulb size={15} />{t}</li>)}</ul>}
   </section>;

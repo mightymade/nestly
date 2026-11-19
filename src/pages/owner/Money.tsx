@@ -21,6 +21,7 @@ import { dayDate, HostelSwitcher, Locked, maskTo, shortDate, useOwner } from './
 
 type Data = Awaited<ReturnType<typeof ownerMoney>>;
 type Fee = Data['fees'][number];
+const balanceLabel = (f: { balanceState: string; rentPaidOn?: string | null }) => f.balanceState === 'none' ? 'No balance' : f.balanceState === 'received' ? `Received${f.rentPaidOn ? ' ' + f.rentPaidOn : ''}` : 'Not yet paid';
 const METHOD = { mtn: 'MTN Mobile Money', airtel: 'Airtel Money', bank: 'Bank account' } as const;
 
 export function Money() {
@@ -46,10 +47,12 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
   if (loading && !data) return <><PageHeader title="Money" /><Skeleton rows={3} h={120} /></>;
   const d = data!; const s = d.sub;
   const total = fees.reduce((a, f) => a + f.fee, 0);
+  const balCollected = fees.filter(f => f.balanceState === 'received').reduce((a, f) => a + f.balance, 0);
+  const balOwing = fees.filter(f => f.balanceState === 'owed').reduce((a, f) => a + f.balance, 0);
   const hostels = Array.from(new Map(d.fees.map(f => [f.hostelId, { id: f.hostelId, name: f.hostel }])).values());
 
   const csv = () => {
-    const rows = [['Date', 'Student', 'Hostel', 'Room type', 'Booking fee (UGX)', 'Payment reference'], ...fees.map(f => [shortDate(f.at!), f.student, f.hostel, f.room, String(f.fee), f.payRef ?? ''])];
+    const rows = [['Date', 'Student', 'Hostel', 'Room type', 'Booking fee (UGX)', 'Rent balance (UGX)', 'Balance status', 'Payment reference'], ...fees.map(f => [shortDate(f.at!), f.student, f.hostel, f.room, String(f.fee), String(f.balance), balanceLabel(f), f.payRef ?? ''])];
     const blob = new Blob([rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'nestly-booking-fees.csv'; a.click(); URL.revokeObjectURL(a.href);
   };
@@ -59,7 +62,7 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
   const subText = off ? 'Starts when your first hostel goes live' : s.overdue ? `${s.neverPaid ? 'Due' : 'Overdue'} since ${dayDate(s.due)}` : `Paid until ${dayDate(s.paidUntil)}`;
   const subPill = off ? <Pill tone="neutral">Not started</Pill> : s.overdue ? <Pill tone="danger">Pay now</Pill> : <Pill tone="success">Paid</Pill>;
   const strip = <div className="card sstrip" aria-label="Money summary">
-    <div className="sc"><span className="sc-l">Booking fees this month</span><span className="sc-v num">{ugx(d.month)}</span><span className="sc-s">{d.monthCount} {d.monthCount === 1 ? 'booking' : 'bookings'} · {ugx(d.collected)} this semester</span></div>
+    <div className="sc"><span className="sc-l">Booking fees this month</span><span className="sc-v num">{ugx(d.month)}</span><span className="sc-s">{d.monthCount} {d.monthCount === 1 ? 'booking' : 'bookings'} · {ugx(d.collected)} this semester · {ugx(d.balanceCollected)} rent balance received{d.balanceOwing > 0 ? `, ${ugx(d.balanceOwing)} still to collect` : ''}</span></div>
     <Link to="/o/settings/payout" className="sc"><span className="sc-l"><ShieldCheck size={13} />Paid straight into</span>
       <span className="sc-v">{d.account ? maskTo(d.account.method, d.account.to) : <small className="warn-t">No account yet</small>}</span><span className="sc-s">{d.account ? `${d.account.name} · tap to change` : 'Add one so students can pay you'}</span></Link>
     <button type="button" className={'sc' + (s.overdue ? ' due' : '')} onClick={() => setSubOpen(true)}><span className="sc-l">Nestly subscription</span>
@@ -73,10 +76,12 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
     ...(hostels.length > 1 ? [{ key: 'h', header: 'Hostel', cell: (f: Fee) => <span className="clamp1">{f.hostel}</span> }] : []),
     { key: 'r', header: 'Room type', cell: f => <span className="clamp1">{f.room}</span> },
     { key: 'a', header: 'Booking fee', cell: f => <b className="num ink">{ugx(f.fee)}</b> },
+    { key: 'b', header: 'Rent balance', cell: f => f.balanceState === 'none' ? <span className="muted">None</span>
+      : <span className="who"><b className="num ink">{ugx(f.balance)}</b>{f.balanceState === 'received' ? <Pill tone="success">Received</Pill> : <Pill tone="warn">Not yet paid</Pill>}</span> },
     { key: 'p', header: 'Reference', cell: f => <span className="num muted">{f.payRef ?? f.id}</span> },
   ];
   const search = <SearchIcon value={q} onChange={setQ} open={searching} setOpen={setSearching} placeholder="Student, hostel or reference" />;
-  const totalLine = <span className="mn-total"><b className="num ink">{ugx(total)}</b> from {fees.length} {fees.length === 1 ? 'payment' : 'payments'}</span>;
+  const totalLine = <span className="mn-total"><b className="num ink">{ugx(total)}</b> in booking fees from {fees.length} {fees.length === 1 ? 'booking' : 'bookings'} · <b className="num ink">{ugx(balCollected)}</b> balance received{balOwing > 0 && <> · <b className="num ink">{ugx(balOwing)}</b> still to collect</>}</span>;
   const head = <div className={'vhead mn-head' + (searching ? ' searching' : '')}>
     <DateFilter value={range} onChange={setRange} />
     {!phone && totalLine}
@@ -90,10 +95,10 @@ function View({ ownerId, phone0 }: { ownerId: string; phone0: string }) {
           <div className="vm-line3"><span>{shortDate(f.at!)}</span><span className="clamp1">· {f.hostel}</span></div></div>
         <ChevronRight size={18} className="muted" /></button>)}</div>
     : <DataTable label="Booking fees received" noun="payments" rows={fees} rowKey={f => f.id} columns={cols} onRowClick={setOpen} rowLabel={f => `Booking fee from ${f.student}`} />;
-  const note = <p className="tiny muted row-sm"><Info size={13} />Students pay booking fees straight into your account. Rent is paid to you at check-in, so it is not shown here.</p>;
+  const note = <p className="tiny muted row-sm"><Info size={13} />Students pay booking fees straight into your account. The rent balance is paid to the hostel at check-in. It shows as received once your custodian records it.</p>;
 
   const detail = open && <Overlay title="Booking fee received" onClose={() => setOpen(null)} width={440}>
-    <div className="review-list">{([['Student', open.student], ['Hostel', open.hostel], ['Room type', open.room], ['Semester', open.sem], ['Amount', ugx(open.fee)], ['Paid on', shortDate(open.at!)],
+    <div className="review-list">{([['Student', open.student], ['Hostel', open.hostel], ['Room type', open.room], ['Semester', open.sem], ['Booking fee', ugx(open.fee)], ['Paid on', shortDate(open.at!)], ['Semester rent', ugx(open.rentTotal)], ['Rent balance', open.balanceState === 'none' ? 'None' : `${ugx(open.balance)} · ${balanceLabel(open)}`],
       ['Paid to', d.account ? maskTo(d.account.method, d.account.to) : 'Your account'], ['Payment reference', open.payRef ?? open.id]] as [string, string][]).map(([k, v]) =>
       <div key={k} className="review-row"><div className="min0"><span className="tiny muted">{k}</span><b className="small ink">{v}</b></div></div>)}</div>
   </Overlay>;

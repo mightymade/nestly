@@ -57,8 +57,8 @@ export function Rating({ value, count }: { value: number; count?: number }) {
 }
 
 /** Phone-only header for screens opened on top of a tab. */
-export function BackBar({ title, to, right }: { title: string; to: string; right?: ReactNode }) {
-  return <header className="back-bar"><Link to={to} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></Link>
+export function BackBar({ title, to, right, onBack }: { title: string; to: string; right?: ReactNode; onBack?: () => void }) {
+  return <header className="back-bar">{onBack ? <button type="button" onClick={onBack} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></button> : <Link to={to} className="round-btn" aria-label="Back"><ChevronLeft size={22} /></Link>}
     <h2 className="clamp1">{title}</h2><div>{right}</div></header>;
 }
 

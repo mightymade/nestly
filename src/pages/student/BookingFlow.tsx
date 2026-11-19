@@ -63,8 +63,9 @@ export function BookingFlow({ h, room, onRoom, onClose }: { h: Hostel; room: num
     <div className="stack">
       <div className="row"><div style={{ width: 56, height: 56, borderRadius: 14, overflow: 'hidden', flex: 'none' }}><Art hostel={h} /></div><div><b className="ink">{h.name}</b><div className="small muted">{SEM}{semObj ? ` · ${semDates(semObj)}` : ""}</div></div></div>
       <RoomList h={h} sel={room} onSel={onRoom} />
-      <div className="receipt"><div className="sum"><span className="muted">Booking fee, paid now</span><b className="num ink">{ugx(h.fee)}</b></div>
-        <div className="sum"><span className="muted">Rent, paid to the owner later</span><span className="num">{ugx(r.price)}</span></div></div>
+      <div className="receipt"><div className="sum"><span className="muted">Rent for the semester</span><span className="num">{ugx(r.price)}</span></div>
+        <div className="sum"><span className="muted">Booking fee, paid now (taken off the rent)</span><b className="num ink">{ugx(h.fee)}</b></div>
+        <div className="sum total"><span>Balance, paid at check-in</span><span className="num">{ugx(Math.max(0, r.price - h.fee))}</span></div></div>
     </div></Overlay>;
 
   if (step === 'pay') return <Overlay title="Pay the booking fee" onClose={onClose}
@@ -105,7 +106,8 @@ export function BookingFlow({ h, room, onRoom, onClose }: { h: Hostel; room: num
         <div className="sum"><span className="muted">Paid to</span><span>{h.name}, directly</span></div>
         <div className="sum"><span className="muted">Paid with</span><span>{method === 'mtn' ? 'MTN MoMo' : 'Airtel Money'}</span></div>
         <div className="sum"><span className="muted">Amount</span><span className="num">{ugx(h.fee)}</span></div>
+        <div className="sum"><span className="muted">Balance to pay at check-in</span><span className="num">{ugx(Math.max(0, r.price - h.fee))}</span></div>
         <div className="sum"><span className="muted">Free cancellation until</span><span>{booking?.cancelUntil}</span></div>
       </div>
-      <p className="small muted">{live ? 'Your receipt is saved in Bookings.' : `A receipt was sent to ${me.email}.`}</p></div></Overlay>;
+      <p className="small muted">The custodian gives you a room. You can check in once the balance is paid. {live ? 'Your receipt is saved in Bookings.' : `A receipt was sent to ${me.email}.`}</p></div></Overlay>;
 }

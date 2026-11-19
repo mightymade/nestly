@@ -1,4 +1,4 @@
-import { CalendarClock, Copy, KeyRound, LogIn, LogOut, Phone, Users } from 'lucide-react';
+import { Banknote, CalendarClock, Copy, KeyRound, LogIn, LogOut, Phone, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -11,10 +11,11 @@ import { EmptyState, ErrorState } from '../../components/States';
 import { useToast } from '../../components/Toast';
 import { Avatar, Btn, Skeleton } from '../../components/ui';
 import type { Tenant } from '../../data/types';
-import { copyText } from '../../lib/format';
+import { copyText, ugx } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
-import { listTenants, setTenantStatus } from '../../services/api';
+import { balanceDue, balanceOwed, bookingOfTenant, listTenants, setTenantStatus } from '../../services/api';
 import { useData } from '../../services/useData';
+import { CollectBalance } from './CollectBalance';
 import { useHostelId } from './shared';
 
 type Filter = Tenant['status'];
@@ -26,12 +27,19 @@ export function Tenants() {
   const { data, loading, error, reload } = useData(() => listTenants(hid), [hid]);
   const [params] = useSearchParams(); const nav = useNavigate();
   const [filter, setFilter] = useState<Filter>('in'); const [q, setQ] = useState(params.get('q') ?? ''); const [searching, setSearching] = useState(!!params.get('q'));
-  const [confirm, setConfirm] = useState<Tenant | null>(null); const [busy, setBusy] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<Tenant | null>(null); const [busy, setBusy] = useState<string | null>(null); const [collect, setCollect] = useState<Tenant | null>(null);
   const all = data ?? [];
   const list = useMemo(() => all.filter(t => t.status === filter && `${t.name} ${t.room}`.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => a.room.localeCompare(b.room)), [all, filter, q]);
   const count = (s: Filter) => all.filter(t => t.status === s).length;
-  async function checkIn(t: Tenant) { if (!t.roomId) { nav(`/c/rooms?assign=${t.id}`); return; } setBusy(t.id); await setTenantStatus(t.id, 'in'); setBusy(null); toast(`${t.name.split(' ')[0]} checked in to ${t.room}`); }
+  /** What the student still owes before they can be checked in (0 when nothing). */
+  const owes = (t: Tenant) => { const b = bookingOfTenant(t); return balanceOwed(b) ? balanceDue(b!) : 0; };
+  async function checkIn(t: Tenant) {
+    if (!t.roomId) { nav(`/c/rooms?assign=${t.id}`); return; }
+    if (owes(t)) { setCollect(t); return; }
+    setBusy(t.id);
+    try { await setTenantStatus(t.id, 'in'); toast(`${t.name.split(' ')[0]} checked in to ${t.room}`); } catch (x) { toast((x as Error).message); } finally { setBusy(null); }
+  }
   const copy = async (t: Tenant) => toast((await copyText(t.phone)) ? `${t.name.split(' ')[0]}'s number copied` : 'Could not copy. Select the number instead.');
 
   const tabs = <Segmented label="Show tenants" value={filter} onChange={setFilter}
@@ -46,7 +54,7 @@ export function Tenants() {
     { key: 'phone', header: 'Phone', cell: t => <span className="row-sm"><span className="num">{t.phone}</span>
       <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => copy(t)} aria-label={`Copy ${t.name}'s phone number`}><Copy size={14} /></button></span> },
     { key: 'end', header: filter === 'due' ? 'Moving in' : 'Stay ends', cell: t => filter === 'due' ? 'Today' : t.end },
-    { key: 'act', header: '', align: 'right', cell: t => t.status === 'due' ? (t.roomId ? <Btn size="sm" loading={busy === t.id} onClick={() => checkIn(t)}><LogIn size={15} />Check in</Btn> : <Btn size="sm" kind="secondary" onClick={() => checkIn(t)}><KeyRound size={15} />Give a room</Btn>)
+    { key: 'act', header: '', align: 'right', cell: t => t.status === 'due' ? (t.roomId ? (owes(t) ? <Btn size="sm" kind="secondary" onClick={() => setCollect(t)}><Banknote size={15} />Collect {ugx(owes(t))}</Btn> : <Btn size="sm" loading={busy === t.id} onClick={() => checkIn(t)}><LogIn size={15} />Check in</Btn>) : <Btn size="sm" kind="secondary" onClick={() => checkIn(t)}><KeyRound size={15} />Give a room</Btn>)
       : t.status === 'in' ? <Btn kind="secondary" size="sm" onClick={() => setConfirm(t)}><LogOut size={15} />Check out</Btn> : <Pill tone="neutral">Left</Pill> },
   ];
 
@@ -54,7 +62,7 @@ export function Tenants() {
     text={q ? 'Try a different name or room.' : filter === 'due' ? 'Students who booked show up here on their move-in day.' : 'Tenants show up here once they are checked in.'} />;
   const body = error ? <ErrorState message={error} onRetry={reload} /> : loading && !data ? <Skeleton rows={4} h={phone ? 84 : 56} />
     : !list.length ? empty
-    : phone ? <div className="vgrid">{list.map(t => <TenantCard key={t.id} t={t} busy={busy === t.id} onIn={() => checkIn(t)} onOut={() => setConfirm(t)} />)}</div>
+    : phone ? <div className="vgrid">{list.map(t => <TenantCard key={t.id} t={t} owes={owes(t)} busy={busy === t.id} onIn={() => checkIn(t)} onOut={() => setConfirm(t)} />)}</div>
     : <DataTable label="Tenants" noun="tenants" rows={list} rowKey={t => t.id} columns={columns} />;
 
   const dialog = confirm && <Overlay title={`Check out ${confirm.name.split(' ')[0]}?`} onClose={() => setConfirm(null)} width={440}
@@ -63,7 +71,7 @@ export function Tenants() {
 
   if (phone) return <>
     <PageHeader title="Tenants" search={false} />
-    {head}{body}{dialog}
+    {head}{body}{dialog}{collect && <CollectBalance t={collect} onClose={() => setCollect(null)} />}
   </>;
   return <>
     <PageHeader title="Tenants" search={false} />
@@ -71,23 +79,24 @@ export function Tenants() {
       {head}
       <div className="card-body">{body}</div>
     </section>
-    {dialog}
+    {dialog}{collect && <CollectBalance t={collect} onClose={() => setCollect(null)} />}
   </>;
 }
 
 /** Phone row: who, which room and type, when they move in or out, then icon actions. */
-function TenantCard({ t, busy, onIn, onOut }: { t: Tenant; busy: boolean; onIn: () => void; onOut: () => void }) {
+function TenantCard({ t, owes, busy, onIn, onOut }: { t: Tenant; owes: number; busy: boolean; onIn: () => void; onOut: () => void }) {
   const first = t.name.split(' ')[0];
   return <div className="vcard vcard-m">
     <Avatar user={{ name: t.name }} size={40} />
     <div className="vm-info">
       <div className="vm-line1"><b className="ink clamp1">{t.name}</b></div>
       <div className="vm-line2">{t.roomId ? <span className="vroom">{t.room}</span> : t.status === 'due' ? <span className="warn-t strong" style={{ flex: 'none' }}>No room yet</span> : null}<span className="clamp1">{t.type}</span></div>
-      <div className="vm-line3"><CalendarClock size={13} /><span className="clamp1">{t.status === 'due' ? (t.roomId ? 'Moving in, room ready' : 'Moving in, needs a room') : t.status === 'in' ? `Stay ends ${t.end}` : `Left · stay was to ${t.end}`}</span></div>
+      <div className="vm-line3"><CalendarClock size={13} /><span className="clamp1">{t.status === 'due' ? (t.roomId ? (owes ? `Balance ${ugx(owes)} due before check-in` : 'Moving in, room ready') : 'Moving in, needs a room') : t.status === 'in' ? `Stay ends ${t.end}` : `Left · stay was to ${t.end}`}</span></div>
     </div>
     <div className="vm-acts row-acts">
       <a className="vm-btn" href={tel(t.phone)} aria-label={`Call ${t.name}, ${t.phone}`}><Phone size={17} /></a>
-      {t.status === 'due' && (t.roomId ? <button className="vm-btn primary" onClick={onIn} disabled={busy} aria-label={`Check ${first} in`} title="Check in"><LogIn size={17} /></button>
+      {t.status === 'due' && (t.roomId ? (owes ? <button className="vm-btn primary" onClick={onIn} aria-label={`Collect ${first}'s balance of ${ugx(owes)}`} title="Collect the balance"><Banknote size={17} /></button>
+          : <button className="vm-btn primary" onClick={onIn} disabled={busy} aria-label={`Check ${first} in`} title="Check in"><LogIn size={17} /></button>)
         : <button className="vm-btn primary" onClick={onIn} aria-label={`Give ${first} a room`} title="Give a room"><KeyRound size={17} /></button>)}
       {t.status === 'in' && <button className="vm-btn" onClick={onOut} aria-label={`Check ${first} out`} title="Check out"><LogOut size={17} /></button>}
     </div>
