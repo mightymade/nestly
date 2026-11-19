@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, CheckCircle2, ClipboardCheck, Flag, History, UserCheck, Wallet } from 'lucide-react';
+import { GraduationCap, ArrowRight, Building2, CheckCircle2, ClipboardCheck, Flag, History, UserCheck, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
@@ -26,6 +26,7 @@ export function AdminOverview() {
   const items: [number, string, string, typeof Flag, string, boolean][] = [
     [q.flags, q.flags === 1 ? 'open report' : 'open reports', '/a/flags', Flag, 'safety and payment problems first', true],
     [q.owners, q.owners === 1 ? 'owner waiting for review' : 'owners waiting for review', '/a/reviews?tab=owners', UserCheck, d.ownersSince ? `oldest has waited ${waited(d.ownersSince)}` : '', false],
+    [q.students, q.students === 1 ? 'student ID waiting for review' : 'student IDs waiting for review', '/a/reviews?tab=students', GraduationCap, q.studentsSince ? `oldest has waited ${waited(q.studentsSince)}` : '', false],
     [q.listings, q.listings === 1 ? 'listing waiting for review' : 'listings waiting for review', '/a/reviews?tab=listings', ClipboardCheck, q.oldest ? `oldest has waited ${waited(q.oldest)}` : '', false],
     [m.late, m.late === 1 ? 'owner is late paying' : 'owners are late paying', '/a/subscriptions', Wallet, `owe ${ugx(m.owed)} in total`, false],
   ];

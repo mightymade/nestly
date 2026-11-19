@@ -20,6 +20,7 @@ Run the files in this order:
 7. `0007_payments.sql`: mobile money payments through Flutterwave
 8. `0008_live_updates.sql`: screens update by themselves, and visitor logs are deleted after 90 days
 9. `0009_rent_balance.sql`: the booking fee counts toward the rent, a student checks in only after paying the balance, and only staff can sign visitors out
+10. `0010_student_id.sql`: students can sign up with any email and a student ID, which an admin checks
 
 If one fails, stop and send the error message. Don't run the next file.
 
@@ -84,6 +85,18 @@ Custodians join with an invite code and may have no email inbox. A small server 
 4. Click **Deploy**.
 
 You don't need to add any settings. Supabase gives the function the keys it needs.
+
+## 5a. Add the student ID sign-up function
+
+Students who cannot get emails on their university address can sign up with any email (for example Gmail) and a photo of their student ID. An admin checks the ID under **Reviews > Students**. Booking opens once it is approved, and the photo is deleted as soon as the admin decides.
+
+1. Run `0010_student_id.sql` first (step 4).
+2. Open **Edge Functions > Deploy a new function > Via Editor**.
+3. Name it exactly `student-signup`.
+4. Delete the sample code, then paste in everything from `supabase/functions/student-signup/index.ts`.
+5. Click **Deploy**. Use the same settings as `accept-invite`.
+
+The university email route keeps working as before.
 
 ## 5b. Take payments with Flutterwave (test mode)
 

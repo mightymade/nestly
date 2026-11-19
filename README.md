@@ -106,8 +106,8 @@ This is the set-up used by the live prototype and our tests.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Follow [`supabase/SETUP.md`](supabase/SETUP.md) step by step:
-   - run the files in `supabase/migrations` in order (`0001` to `0009`), then `supabase/sample_data.sql`
-   - deploy the two server functions, `payments` and `accept-invite`
+   - run the files in `supabase/migrations` in order (`0001` to `0010`), then `supabase/sample_data.sql`
+   - deploy the three server functions, `payments`, `accept-invite` and `student-signup`
    - add your Flutterwave **sandbox** keys as function secrets
 3. Copy `.env.example` to `.env` and fill in your project's URL and **anon** (public) key.
 4. Run `npm ci`, then `npm run dev`.
@@ -131,6 +131,7 @@ All accounts are fictitious. The password for every account is **`nestly123`**.
 | Role | Log in with | Try this |
 |---|---|---|
 | Student | `sarah.atim@ucu.ac.ug` | Find a room, book it, pay in the sandbox, cancel, review |
+| Student waiting for ID check | `brian.ssemwanga@gmail.com` | See what a student on the student ID route sees before approval |
 | Custodian | `peter.k` | Give a room, record the balance, check in, open the gate QR |
 | Owner | `grace.n` | Check bookings and fees, invite staff, pay the subscription |
 | Owner awaiting approval | `daniel.o` | See what a new owner sees before approval |
@@ -161,7 +162,7 @@ The test scripts and evidence are in the group repository, [Nestly-v0](https://g
 |---|---|---|
 | Web app | React 18, TypeScript, Vite | All screens; hosted on Vercel |
 | Database | PostgreSQL on Supabase | 19 tables; row-level security decides what each user can see |
-| Logins | Supabase Auth | Sign-up, login and email confirmation |
+| Logins | Supabase Auth | Sign-up, login and email confirmation; student ID route checked by an admin |
 | Files | Supabase Storage | Public hostel photos; private owner documents |
 | Payments | Supabase Edge Function + Flutterwave sandbox | Starts each charge and verifies it before a booking is confirmed |
 | Maps | Leaflet + OpenStreetMap | Hostel locations and walking routes |
@@ -182,7 +183,7 @@ nestly/
 │   └── data/             Data types and sample catalogue
 ├── supabase/
 │   ├── migrations/       Database tables, security rules and functions (run in order)
-│   ├── functions/        Server code: payments and accept-invite
+│   ├── functions/        Server code: payments, accept-invite and student-signup
 │   ├── sample_data.sql   Fictitious sample data
 │   └── SETUP.md          Step-by-step database set-up
 ├──      Images used in this README

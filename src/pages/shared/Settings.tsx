@@ -50,7 +50,7 @@ export function SettingsPage({ base, home }: { base: string; home: string }) {
       <div className="card profile-card">
         <Link to={`${base}/profile`} className="avatar-edit" aria-label="Change profile photo"><Avatar user={me} size={88} /><span className="cam"><Camera size={15} /></span></Link>
         <h2 style={{ fontSize: 20, marginTop: 6 }}><VerifiedName user={me} /></h2><p className="small muted">{me.role === 'student' ? 'Student' : me.role === 'custodian' ? 'Custodian' : me.role === 'owner' ? 'Owner' : 'Admin'} · {where}</p>
-        {me.role === 'student' && !me.emailVerified && <Link to="/signup"><Pill tone="warn">Email not confirmed. Tap to confirm</Pill></Link>}
+        {me.role === 'student' && !me.emailVerified && <Link to="/signup"><Pill tone="warn">{me.verifyVia === 'id' ? (me.idStatus === 'rejected' ? 'Student ID not accepted. Tap to fix' : 'Student ID being checked') : 'Email not confirmed. Tap to confirm'}</Pill></Link>}
       </div>
       <div className="card m-list">{SECTIONS.filter(s => !(me.role === 'custodian' && s.id === 'appearance')).map(s => <Link key={s.id} to={`${base}/${s.id}`}><span className="icon-tile sm primary"><s.icon size={18} /></span>
         <span className="grow">{s.label}<span className="sub">{s.sub}</span></span><ChevronRight size={18} className="chev" /></Link>)}
@@ -155,9 +155,9 @@ function ProfileSection() {
           : <Field id="pf-phone" label="Mobile money number" error={err.phone}><TextInput id="pf-phone" type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} error={err.phone} autoComplete="tel" /></Field>}
         {isCust
           ? <Field id="pf-email" label="Email" error={err.email} hint={f.email !== me.email ? 'We will send a link to confirm the new address.' : undefined}><TextInput id="pf-email" type="email" value={f.email} onChange={set('email')} error={err.email} autoComplete="email" /></Field>
-          : <Field id="pf-email" label="Student email" hint={me.emailVerified ? `Confirmed until ${dayLabel(me.verifiedUntil)}` : undefined}>
+          : <Field id="pf-email" label={me.verifyVia === 'id' ? 'Email' : 'Student email'} hint={me.emailVerified ? (me.verifyVia === 'id' ? `Student ID ${me.studentNo ?? ''} approved, valid until ${dayLabel(me.verifiedUntil)}` : `Confirmed until ${dayLabel(me.verifiedUntil)}`) : undefined}>
               <div className="input-wrap has-trail"><TextInput id="pf-email" value={me.email} readOnly /><span className="trail" style={{ color: me.emailVerified ? 'var(--success)' : 'var(--warn)', width: 36, display: 'grid', placeItems: 'center' }}>{me.emailVerified ? <Check size={18} /> : <X size={18} />}</span></div>
-              {!me.emailVerified && <Link to="/signup" className="btn btn-primary btn-sm" style={{ width: 'fit-content' }}>Confirm my email</Link>}</Field>}
+              {!me.emailVerified && <Link to="/signup" className="btn btn-primary btn-sm" style={{ width: 'fit-content' }}>{me.verifyVia === 'id' ? 'See student ID status' : 'Confirm my email'}</Link>}</Field>}
         {isCust
           ? <Field id="pf-phone" label="Phone" error={err.phone}><TextInput id="pf-phone" type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} error={err.phone} autoComplete="tel" /></Field>
           : <Field id="pf-uni" label="University"><TextInput id="pf-uni" value={universityById(me.universityId)?.name ?? ''} readOnly /></Field>}
