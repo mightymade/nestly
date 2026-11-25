@@ -85,6 +85,23 @@ Custodians join with an invite code and may have no email inbox. A small server 
 
 You don't need to add any settings. Supabase gives the function the keys it needs.
 
+## 5c. Email custodian invites
+
+When an owner invites a custodian with an email address, Nestly emails them the invite link and code. It sends through the same Gmail account as section 4.
+
+1. Open **Edge Functions > Deploy a new function > Via Editor**, name it exactly `send-invite`, paste in everything from `supabase/functions/send-invite/index.ts`, and click **Deploy**.
+2. Open **Edge Functions > Secrets** and add:
+
+   | Name | Value |
+   |---|---|
+   | `GMAIL_USER` | the Gmail address from section 4 |
+   | `GMAIL_APP_PASSWORD` | the same 16-letter app password from section 4 (no spaces) |
+   | `SITE_URL` | your site, for example `https://nestly-ug.vercel.app` |
+
+3. Test it: log in as an owner, open **Staff > Invite a custodian**, and invite your own second email address.
+
+If the email cannot be sent, the owner sees why and can still share the invite on WhatsApp.
+
 ## 5b. Take payments with Flutterwave (test mode)
 
 Booking fees and owner subscriptions are paid by MTN or Airtel mobile money through Flutterwave (API v4). The person gets a prompt on their phone; in the sandbox they type the code `123456` instead. No real money moves.

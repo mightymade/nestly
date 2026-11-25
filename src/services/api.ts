@@ -995,20 +995,51 @@ export async function listCustodians(ownerId: string) {
 }
 /** True when an invite is more than 7 days old. */
 export const inviteExpired = (i: { at?: string }) => !!i.at && Date.now() - +new Date(i.at) > 7 * 86400000;
-/** Creates an invite code for a new custodian. Returns the invite. */
-export async function inviteCustodian(hostelId: string, name: string, contact: string) {
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+/** True when the invite was made with a real email address (not a phone number). */
+export const inviteHasEmail = (i: { email: string }) => EMAIL_RE.test(i.email) && !i.email.endsWith('@sms.nestly.app');
+/**
+ * Emails the invite link and code to the custodian. Live: the send-invite server function sends it from the
+ * Nestly Gmail account. Demo: nothing is sent. Returns the address, or throws an ApiError with a reason.
+ */
+export async function emailInvite(code: string): Promise<string> {
+  const i = getDb().invites.find(x => x.code === code);
+  if (!i || !inviteHasEmail(i)) throw new ApiError('This invite has a phone number, not an email.');
+  if (!live) { await wait(500); return i.email; }
+  const { data, error } = await sb!.functions.invoke('send-invite', { body: { code } });
+  if (error || !data?.sent) {
+    let msg = 'We could not send the email. Share the invite on WhatsApp instead.';
+    try { const body = await (error as { context?: Response })?.context?.json(); if (body?.error) msg = body.error; } catch { /* keep the general message */ }
+    throw new ApiError(msg);
+  }
+  return data.sent as string;
+}
+/**
+ * Creates an invite code for a new custodian and, when an email was given, emails it to them.
+ * Returns the code, the address it was emailed to (or null), and why the email failed (if it did).
+ */
+export async function inviteCustodian(hostelId: string, name: string, contact: string): Promise<{ code: string; emailed: string | null; emailError: string | null }> {
   await wait(600); const db = getDb(); const h = hostelById(hostelId)!; const me = sessionUser()!;
   if (name.trim().split(/\s+/).length < 2) throw new ApiError('Enter their first and last name.', 'name');
-  if (!contact.trim()) throw new ApiError('Enter a phone number or email.', 'contact');
+  if (!contact.trim()) throw new ApiError('Enter their email, or a phone number.', 'contact');
+  const isEmail = contact.includes('@');
+  if (isEmail && !EMAIL_RE.test(contact.trim())) throw new ApiError('Check the email address.', 'contact');
+  if (!isEmail && !/^\+?[\d\s-]{9,15}$/.test(contact.trim())) throw new ApiError('Enter an email, or a phone number like 0772 123 456.', 'contact');
   const prefix = h.name.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase().padEnd(4, 'X');
   let code = ''; do { code = `${prefix}-${1000 + Math.floor(Math.random() * 9000)}`; } while (db.invites.some(i => i.code === code));
   db.invites.push({ code, hostelId, invitedBy: me.name, email: contact.includes('@') ? contact.trim().toLowerCase() : `${contact.replace(/\s/g, '')}@sms.nestly.app`, name: name.trim(), used: false, at: isoNow() });
   audit('Invited custodian', h.name, `${name.trim()} (${contact.trim()})`);
   notify(me.id, { kind: 'staff', title: `Invite ready for ${name.trim().split(' ')[0]}`, text: `Code ${code} for ${h.name}. It expires in 7 days.`, to: '/o/staff' });
-  await commit(); return code;
+  await commit();
+  if (!isEmail) return { code, emailed: null, emailError: null };
+  try { return { code, emailed: await emailInvite(code), emailError: null }; }
+  catch (x) { return { code, emailed: null, emailError: (x as Error).message }; }
 }
-/** Sends an invite again and restarts its 7 days. */
-export async function resendInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.at = isoNow(); await commit(); }
+/** Renews an invite for another 7 days and emails it again when it has an email. Returns the address emailed, if any. */
+export async function resendInvite(code: string): Promise<string | null> {
+  await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.at = isoNow(); await commit();
+  return inviteHasEmail(i) ? emailInvite(code) : null;
+}
 /** Cancels an invite so the code stops working. */
 export async function cancelInvite(code: string) { await wait(300); const i = getDb().invites.find(x => x.code === code)!; i.cancelled = true; await commit(); }
 /** Removes a custodian from a hostel. */
