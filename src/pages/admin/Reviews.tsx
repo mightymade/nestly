@@ -19,7 +19,7 @@ import { maskTo } from '../owner/shared';
 
 type Q = Awaited<ReturnType<typeof listReviewQueue>>;
 type OwnerItem = Q['owners'][number]; type ListingItem = Q['listings'][number]; type StudentItem = Q['students'][number];
-const DOC_NAME: Record<VerificationDoc['kind'], string> = { national_id: 'National ID', selfie: 'Selfie', ownership: 'Proof of ownership', trading_licence: 'Trading licence', student_id: 'Student ID' };
+const DOC_NAME: Record<VerificationDoc['kind'], string> = { national_id: 'National ID', selfie: 'Selfie', ownership: 'Proof of ownership', trading_licence: 'Trading licence', student_id: 'Student ID', student_selfie: 'Selfie with ID' };
 export const waited = (iso: string) => { const m = Math.max(1, Math.round((Date.now() - +new Date(iso)) / 60000)); return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} ${Math.round(m / 1440) === 1 ? 'day' : 'days'}`; };
 
 export function AdminReviews() {
@@ -100,17 +100,17 @@ function OwnerReview({ o, onDone }: { o: OwnerItem; onDone: () => void }) {
   </div>;
 }
 
-const ID_REASONS = ['ID photo is blurry', 'Name does not match the ID', 'Student number does not match the ID', 'ID has expired', 'Not a student ID of this university'];
+const ID_REASONS = ['ID photo is blurry', 'Selfie does not match the photo on the ID', 'Name does not match the ID', 'Student number does not match the ID', 'ID has expired', 'Not a student ID of this university'];
 function StudentReview({ s, onDone }: { s: StudentItem; onDone: () => void }) {
-  const toast = useToast(); const [rej, setRej] = useState(false); const [busy, setBusy] = useState(false);
-  const u = s.user;
-  const approve = async () => { setBusy(true); try { await approveStudentId(u.id); toast(`${u.name} can now book. The ID photo was deleted.`); onDone(); } finally { setBusy(false); } };
+  const toast = useToast(); const [rej, setRej] = useState(false); const [ok, setOk] = useState(false);
+  const u = s.user; const approvedElsewhere = s.others.filter(o => o.idStatus === 'approved'); const pendingElsewhere = s.others.filter(o => o.idStatus === 'pending');
   return <div className="rv-body">
-    <div className="row between start wrap" style={{ gap: 12 }}><div className="row-sm"><Avatar user={u} size={48} /><div><h2 style={{ fontSize: 20 }}>{u.name}</h2><p className="small muted">{u.email}</p></div></div>
-      <div className="row rv-acts" style={{ gap: 8 }}><Btn kind="secondary" onClick={() => setRej(true)}><X size={16} />Reject</Btn><Btn loading={busy} disabled={!s.doc} onClick={approve}><Check size={16} />Approve</Btn></div></div>
+    <div className="row between start wrap" style={{ gap: 12 }}><div className="row-sm"><Avatar user={u} size={48} /><div><h2 style={{ fontSize: 20 }}>{u.name}</h2><p className="small muted">{u.email} · email confirmed</p></div></div>
+      <div className="row rv-acts" style={{ gap: 8 }}><Btn kind="secondary" onClick={() => setRej(true)}><X size={16} />Reject</Btn><Btn disabled={!s.doc || !s.selfie || !!approvedElsewhere.length} onClick={() => setOk(true)}><Check size={16} />Approve</Btn></div></div>
     <Checks items={[
-      { ok: !!s.doc, text: s.doc ? 'Student ID photo uploaded' : 'No student ID photo yet' },
-      { ok: true, text: `Student number ${u.studentNo ?? ''} is not used by another account` },
+      { ok: !!s.doc && !!s.selfie, text: s.doc && s.selfie ? 'Student ID and selfie uploaded' : 'A photo is missing' },
+      { ok: !approvedElsewhere.length, text: approvedElsewhere.length ? `Student number ${u.studentNo} is already verified for ${approvedElsewhere[0]!.name}` : `Student number ${u.studentNo ?? ''} is not verified on any other account` },
+      ...(pendingElsewhere.length ? [{ ok: false, text: `${pendingElsewhere.length === 1 ? 'Another account also claims' : `${pendingElsewhere.length} other accounts also claim`} this number: ${pendingElsewhere.map(o => `${o.name} (${o.email})`).join(', ')}. Approve at most one.` }] : []),
       { ok: !!s.uni, text: s.uni ? `Says they study at ${s.uni.name}` : 'No university chosen' },
     ]} />
     <div className="rv-facts">
@@ -118,12 +118,24 @@ function StudentReview({ s, onDone }: { s: StudentItem; onDone: () => void }) {
       <div><span className="tiny muted">University</span><b className="small ink">{s.uni?.short}</b></div>
       <div><span className="tiny muted">Sent</span><b className="small ink">{timeAgo(s.since)}</b></div>
     </div>
-    <h3 className="rv-h">Student ID</h3>
-    <div className="rv-docs">{s.doc ? <DocView d={s.doc} /> : <p className="muted small">No photo uploaded yet.</p>}</div>
-    <p className="tiny muted row-sm"><ShieldCheck size={13} />Check the name, student number, university and expiry date on the card. The photo is deleted as soon as you decide.</p>
-    {rej && <ReasonDialog title={`Reject ${u.name.split(' ')[0]}'s ID?`} intro="The student sees this reason and can send a new photo." quick={ID_REASONS} cta="Reject"
+    <h3 className="rv-h">Student ID and selfie</h3>
+    <div className="rv-docs">{s.doc ? <DocView d={s.doc} /> : <p className="muted small">No ID photo.</p>}{s.selfie ? <DocView d={s.selfie} /> : <p className="muted small">No selfie.</p>}</div>
+    <p className="tiny muted row-sm"><ShieldCheck size={13} />Check that the face in the selfie matches the photo on the card, and that the name, number, university and expiry date match. Both photos are deleted as soon as you decide.</p>
+    {ok && <ApproveIdDialog name={u.name} onClose={() => setOk(false)} onApprove={async until => { await approveStudentId(u.id, until); toast(`${u.name} can now book. Both photos were deleted.`); onDone(); }} />}
+    {rej && <ReasonDialog title={`Reject ${u.name.split(' ')[0]}'s ID?`} intro="The student sees this reason and can send new photos." quick={ID_REASONS} cta="Reject"
       onClose={() => setRej(false)} onSend={async r => { await rejectStudentId(u.id, r); toast(`${u.name} was told what to fix`); onDone(); }} />}
   </div>;
+}
+/** Asks for the expiry date printed on the card before approving. Booking stays open until then, for at most a year. */
+function ApproveIdDialog({ name, onClose, onApprove }: { name: string; onClose: () => void; onApprove: (until: string) => Promise<void> }) {
+  const [until, setUntil] = useState(''); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  async function go() { setBusy(true); setErr(null); try { await onApprove(until); } catch (x) { setErr((x as ApiError).message); } finally { setBusy(false); } }
+  return <Overlay title={`Approve ${name.split(' ')[0]}?`} onClose={onClose} width={420} footer={<><Btn kind="secondary" onClick={onClose}>Cancel</Btn><Btn loading={busy} onClick={go}><Check size={16} />Approve</Btn></>}>
+    <div className="stack">
+      <div className="field"><label htmlFor="ap-until">Card valid until</label>
+        <input id="ap-until" className={'input' + (err ? ' bad' : '')} type="date" value={until} min={ymd()} onChange={e => { setUntil(e.target.value); setErr(null); }} aria-invalid={!!err || undefined} aria-describedby="ap-until-h" />
+        {err ? <span className="err" role="alert" id="ap-until-h">{err}</span> : <span className="hint" id="ap-until-h">The expiry date printed on the card. {name.split(' ')[0]} can book until then, for at most one year.</span>}</div>
+    </div></Overlay>;
 }
 
 function ListingReview({ l, onDone }: { l: ListingItem; onDone: () => void }) {

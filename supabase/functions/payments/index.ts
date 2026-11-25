@@ -157,7 +157,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   if (input.kind === 'booking') {
     if (me.role !== 'student') return fail('Only students book rooms.', 403);
-    if (!me.email_verified) return fail(me.verify_via === 'id' ? 'Your student ID is still being checked. You can book once it is approved.' : 'Confirm your student email before booking.');
+    if (!me.email_verified) return fail(me.verify_via === 'id' ? 'Your student ID is not approved yet. You can book once it is.' : 'Confirm your student email before booking.');
     const { data: h } = await db.from('hostels').select('*').eq('id', String(input.hostel_id ?? '')).maybeSingle();
     if (!h || h.status !== 'live') return fail('This hostel is not taking bookings right now.');
     const { data: uni } = await db.from('universities').select('sems').eq('id', h.uni).maybeSingle();

@@ -21,6 +21,7 @@ Run the files in this order:
 8. `0008_live_updates.sql`: screens update by themselves, and visitor logs are deleted after 90 days
 9. `0009_rent_balance.sql`: the booking fee counts toward the rent, a student checks in only after paying the balance, and only staff can sign visitors out
 10. `0010_student_id.sql`: students can sign up with any email and a student ID, which an admin checks
+11. `0011_student_id_v2.sql`: the student ID check asks for a selfie too, only approved accounts hold a student number, and each university says whether its emails arrive
 
 If one fails, stop and send the error message. Don't run the next file.
 
@@ -88,15 +89,21 @@ You don't need to add any settings. Supabase gives the function the keys it need
 
 ## 5a. Add the student ID sign-up function
 
-Students who cannot get emails on their university address can sign up with any email (for example Gmail) and a photo of their student ID. An admin checks the ID under **Reviews > Students**. Booking opens once it is approved, and the photo is deleted as soon as the admin decides.
+Many university mail servers (UCU's included) block emails sent from a Gmail account, so students there never get the confirmation link. The student ID route works around this:
 
-1. Run `0010_student_id.sql` first (step 4).
-2. Open **Edge Functions > Deploy a new function > Via Editor**.
-3. Name it exactly `student-signup`.
-4. Delete the sample code, then paste in everything from `supabase/functions/student-signup/index.ts`.
-5. Click **Deploy**. Use the same settings as `accept-invite`.
+1. The student signs up with any email they check (for example Gmail), their student number and a password.
+2. They confirm that email from the link (Gmail delivers it), then log in.
+3. They add a photo of their student ID and a selfie holding it.
+4. An admin approves or rejects it under **Reviews > Students**, entering the card's expiry date. Booking opens until that date, for at most one year. Both photos are deleted as soon as the admin decides.
 
-The university email route keeps working as before.
+Set it up:
+
+1. Run `0010_student_id.sql` and `0011_student_id_v2.sql` (step 4).
+2. Open **Edge Functions > Deploy a new function > Via Editor**, name it exactly `student-signup`, paste in everything from `supabase/functions/student-signup/index.ts`, and click **Deploy**. If it is already there, open it, paste the new code and deploy again.
+3. Check that your site's `/confirmed` address is in **Authentication > URL Configuration > Redirect URLs** (step 2 already adds it).
+4. Open **Authentication > Rate Limits** and raise **Rate limit for sending emails** to about 100 an hour, so a busy sign-up day is not blocked. Gmail allows about 500 a day.
+
+**Which universities use which route.** After 0011, every university uses the student ID route. In the app, open **Admin > Universities**, open a university and tick **Our emails reach ... addresses** only after you have seen its student emails arrive. The same box shows how many university email sign-ups were confirmed and how many never were, to help you decide. If a student on the email route never gets the link, the "check your inbox" screen offers the student ID route instead.
 
 ## 5c. Email custodian invites
 

@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Overlay } from '../../components/Overlay';
 import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
-import { ApiError, login, requestPasswordReset } from '../../services/api';
+import { ApiError, login, requestPasswordReset, idNeedsPhotos } from '../../services/api';
 import { resetDemo } from '../../services/api';
 import { live } from '../../services/supabase';
 import { AuthLayout } from './AuthLayout';
@@ -20,7 +20,7 @@ export function Login() {
     if (!idv.trim()) return setErr({ field: 'id', msg: 'Enter your email or username.' });
     if (!pw) return setErr({ field: 'password', msg: 'Enter your password.' });
     setBusy(true); setErr(null);
-    try { const u = await login(idv, pw); const next = takeNext(); nav(u.role === 'student' ? next ?? '/s/explore' : u.role === 'custodian' ? '/c/today' : u.role === 'admin' ? '/a/overview' : u.ownerStatus === 'incomplete' ? '/owner/signup' : '/o/overview', { replace: true }); }
+    try { const u = await login(idv, pw); const next = takeNext(); nav(u.role === 'student' ? (idNeedsPhotos(u) ? '/signup' : next ?? '/s/explore') : u.role === 'custodian' ? '/c/today' : u.role === 'admin' ? '/a/overview' : u.ownerStatus === 'incomplete' ? '/owner/signup' : '/o/overview', { replace: true }); }
     catch (x) { const a = x as ApiError; setErr({ field: a.field, msg: a.message }); } finally { setBusy(false); }
   }
   const fill = (a: string) => { setId(a); setPw('nestly123'); setErr(null); setDemo(false); };

@@ -176,71 +176,110 @@ export async function confirmEmail(token: string) {
 /* ---------- Student ID route: any email plus a student ID that an admin checks ---------- */
 /** A student on the student ID route whose ID is still waiting for, or failed, the admin's check. */
 export const idWaiting = (u?: User | null) => !!u && u.role === 'student' && u.verifyVia === 'id' && !u.emailVerified;
+/** True when a student on the ID route still has to add (or redo) their photos. */
+export const idNeedsPhotos = (u?: User | null) => idWaiting(u) && (u!.idStatus === 'needs_photo' || u!.idStatus === 'rejected');
 /** One line telling a student who cannot book yet what is happening and what to do. */
 export function verifyNote(u: User) {
   if (u.verifyVia !== 'id') return 'Confirm your student email to book.';
-  return u.idStatus === 'rejected' ? 'Your student ID was not accepted. Send a new photo to book.' : 'We are checking your student ID. You can book once it is approved.';
+  if (u.idStatus === 'needs_photo') return 'Add photos of your student ID to book.';
+  return u.idStatus === 'rejected' ? 'Your student ID was not accepted. Send new photos to book.' : 'We are checking your student ID. You can book once it is approved.';
+}
+/** How each university's students are verified: by university email only where those emails are known to arrive. */
+export const uniEmailOk = (uniId: string) => !!universityById(uniId)?.emailOk;
+/**
+ * For admins deciding whether a university's emails arrive: of the students who signed up with that university's
+ * email, how many confirmed, and how many never did after a day.
+ */
+export function uniEmailStats(uniId: string) {
+  const day = Date.now() - 86400000;
+  const list = getDb().users.filter(u => u.role === 'student' && u.universityId === uniId && u.verifyVia !== 'id');
+  return { confirmed: list.filter(u => u.emailVerified).length, stuck: list.filter(u => !u.emailVerified && (!u.joined || +new Date(u.joined) < day)).length };
 }
 const SNO = /^[A-Z0-9/-]{4,30}$/;
 /**
- * Creates a student account with any email (for example Gmail), the student number and a photo of the student ID.
- * No confirmation email is needed: the account works at once, and booking opens when an admin approves the ID.
+ * Creates a student account on the student ID route with any email (for example Gmail) and the student number.
+ * Live: Supabase emails a confirmation link first; after confirming and logging in, the student adds their photos.
+ * Demo: the account is made at once and goes straight to the photo step.
+ * Returns the email the link went to (live) or null (demo, already signed in).
  */
-export async function signupStudentWithId(input: { uniId: string; name: string; email: string; phone?: string; password: string; studentNo: string; fileName: string; url: string; file?: File }) {
+export async function signupStudentWithId(input: { uniId: string; name: string; email: string; phone?: string; password: string; studentNo: string }): Promise<string | null> {
   const email = input.email.trim().toLowerCase(); const studentNo = input.studentNo.trim().toUpperCase();
   if (!SNO.test(studentNo)) throw new ApiError('Enter your student number as it is on your student ID.', 'studentNo');
   if (live) {
-    const { data, error } = await sb!.functions.invoke('student-signup', { body: { uniId: input.uniId, name: input.name.trim(), email, password: input.password, studentNo, phone: input.phone || null } });
+    const { data, error } = await sb!.functions.invoke('student-signup', { body: { uniId: input.uniId, name: input.name.trim(), email, password: input.password, studentNo, phone: input.phone || null, redirectTo: siteUrl() + '/confirmed' } });
     if (error || !data?.email) {
       let msg = 'We could not create your account. Try again.'; let field: string | undefined;
       try { const body = await (error as { context?: Response })?.context?.json(); if (body?.error) { msg = body.error; field = body.field; } } catch { /* keep the general message */ }
       if (data?.error) { msg = data.error; field = data.field; }
       throw new ApiError(msg, field);
     }
-    const u = await liveLogin(data.email as string, input.password);
-    await uploadDoc(u.id, 'student_id', input.fileName, input.url, undefined, input.file);
-    return sessionUser() ?? u;
+    return data.email as string;
   }
   await wait(700); const db = getDb();
   if (db.users.some(u => u.email.toLowerCase() === email)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
-  if (db.users.some(u => u.universityId === input.uniId && u.studentNo?.toUpperCase() === studentNo)) throw new ApiError('An account already uses this student number. Log in instead, or contact support@nestly.app.', 'studentNo');
+  if (db.users.some(u => u.universityId === input.uniId && u.studentNo?.toUpperCase() === studentNo && u.idStatus === 'approved'))
+    throw new ApiError('This student number is already verified on another account. If it is yours, contact support@nestly.app.', 'studentNo');
   const u: User = { id: id('u'), role: 'student', name: input.name.trim(), email, phone: input.phone || undefined, password: input.password, universityId: input.uniId,
-    emailVerified: false, verifyVia: 'id', studentNo, idStatus: 'pending', joined: isoNow(), lastActive: isoNow() };
+    emailVerified: false, verifyVia: 'id', studentNo, idStatus: 'needs_photo', joined: isoNow(), lastActive: isoNow() };
   db.users.push(u); storage.set(SESSION, u.id);
-  db.docs.push({ id: id('d'), ownerId: u.id, kind: 'student_id', fileName: input.fileName, url: input.url, uploadedAt: isoNow(), status: 'pending' });
-  adminIds().forEach(a => notify(a, { kind: 'review', title: 'Student ID to check', text: `${u.name} (${universityById(u.universityId)?.short}) signed up with a student ID.`, to: '/a/reviews?tab=students' }));
   audit('Signed up with a student ID', universityById(u.universityId)?.short ?? '', u.name);
+  await commit(); return null;
+}
+type Photo = { name: string; url: string; file?: File };
+/**
+ * Sends the student's ID photos for review: the front of the student ID and a selfie holding it. Also used after
+ * a rejection, when the student may correct their student number too.
+ */
+export async function submitStudentId(userId: string, studentNo: string, idPhoto: Photo, selfie: Photo) {
+  const u0 = getDb().users.find(x => x.id === userId)!;
+  if (u0.idStatus !== 'needs_photo' && u0.idStatus !== 'rejected') throw new ApiError('Your photos are already with our team.');
+  const sno = studentNo.trim().toUpperCase();
+  if (!SNO.test(sno)) throw new ApiError('Enter your student number as it is on your student ID.', 'studentNo');
+  if (getDb().users.some(x => x.id !== userId && x.universityId === u0.universityId && x.studentNo?.toUpperCase() === sno && x.idStatus === 'approved'))
+    throw new ApiError('This student number is already verified on another account. If it is yours, contact support@nestly.app.', 'studentNo');
+  await uploadDoc(userId, 'student_id', idPhoto.name, idPhoto.url, undefined, idPhoto.file);
+  await uploadDoc(userId, 'student_selfie', selfie.name, selfie.url, undefined, selfie.file);
+  const u = getDb().users.find(x => x.id === userId)!; const again = u.idStatus === 'rejected';
+  u.studentNo = sno; u.idStatus = 'pending';
+  // Live: a database trigger tells the admins. Demo: do it here.
+  adminIds().forEach(a => notify(a, { kind: 'review', title: 'Student ID to check', text: `${u.name} (${universityById(u.universityId)?.short}) sent their student ID${again ? ' again' : ''}.`, to: '/a/reviews?tab=students' }));
   await commit(); return safe(u);
 }
-/** After a rejection: sends a new photo of the student ID for checking. */
-export async function resubmitStudentId(userId: string, fileName: string, url: string, file?: File) {
-  await uploadDoc(userId, 'student_id', fileName, url, undefined, file);
-  const u = getDb().users.find(x => x.id === userId)!; u.idStatus = 'pending';
-  adminIds().forEach(a => notify(a, { kind: 'review', title: 'Student ID sent again', text: `${u.name} sent a new photo of their student ID.`, to: '/a/reviews?tab=students' }));
-  await commit(); return safe(u);
+/** Other accounts at the same university that claim the same student number (pending, rejected or approved). */
+export function sameNumberClaims(u: User) {
+  const n = u.studentNo?.toUpperCase(); if (!n) return [];
+  return getDb().users.filter(x => x.id !== u.id && x.universityId === u.universityId && x.studentNo?.toUpperCase() === n && x.idStatus && x.idStatus !== 'none').map(safe);
 }
-/** The student ID photo waiting for review, if any. */
-export const studentIdDoc = (userId: string) => getDb().docs.find(d => d.ownerId === userId && d.kind === 'student_id');
-/** Deletes a student's ID photo once an admin has decided. Only the result is kept. */
+/** Deletes a student's ID photos once an admin has decided. Only the result is kept. */
 async function forgetStudentId(userId: string) {
-  const db = getDb(); const gone = db.docs.filter(d => d.ownerId === userId && d.kind === 'student_id');
+  const db = getDb(); const gone = db.docs.filter(d => d.ownerId === userId && (d.kind === 'student_id' || d.kind === 'student_selfie'));
   db.docs = db.docs.filter(d => !gone.includes(d)); await commit();
   if (live) for (const d of gone) await removeDocFile(storedDocUrl(d));
 }
-/** Approves a student ID: booking opens for a year, like a confirmed university email. The photo is then deleted. */
-export async function approveStudentId(userId: string) {
-  await wait(500); await fresh(); const u = getDb().users.find(x => x.id === userId)!;
-  u.emailVerified = true; u.verifiedUntil = addDays(ymd(), 365); u.idStatus = 'approved'; u.idNote = undefined;
+/**
+ * Approves a student ID. Booking opens until the card's expiry date (as the admin read it from the card),
+ * but for at most one year. The photos are then deleted.
+ */
+export async function approveStudentId(userId: string, cardValidUntil: string) {
+  await wait(500); await fresh(); const db = getDb(); const u = db.users.find(x => x.id === userId)!;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cardValidUntil)) throw new ApiError('Enter the date the card is valid until.', 'until');
+  if (cardValidUntil <= ymd()) throw new ApiError('This card has expired. Reject it and ask for a current one.', 'until');
+  const n = u.studentNo?.toUpperCase();
+  if (db.users.some(x => x.id !== u.id && x.universityId === u.universityId && x.studentNo?.toUpperCase() === n && x.idStatus === 'approved'))
+    throw new ApiError('Another account is already verified with this student number. Reject this one, or check both with the student.', 'until');
+  const cap = addDays(ymd(), 365);
+  u.emailVerified = true; u.verifiedUntil = cardValidUntil < cap ? cardValidUntil : cap; u.idStatus = 'approved'; u.idNote = undefined;
   notify(userId, { kind: 'review', title: 'Your student ID is approved', text: 'You can now book a room.', to: '/s/explore' });
-  audit('Approved student ID', u.name, `${universityById(u.universityId)?.short ?? ''} student number ${u.studentNo ?? ''}. Photo deleted`);
-  await forgetStudentId(userId);
+  audit('Approved student ID', u.name, `${universityById(u.universityId)?.short ?? ''} student number ${u.studentNo ?? ''}, valid until ${u.verifiedUntil}. Photos deleted`);
+  try { await forgetStudentId(userId); }
+  catch (x) { if (/duplicate|unique/i.test((x as Error).message)) throw new ApiError('Another account is already verified with this student number.', 'until'); throw x; }
 }
-/** Rejects a student ID with a reason the student can read. The photo is deleted; they can send a new one. */
+/** Rejects a student ID with a reason the student can read. The photos are deleted; they can send new ones. */
 export async function rejectStudentId(userId: string, reason: string) {
   await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason so the student knows what to fix.', 'reason');
   const u = getDb().users.find(x => x.id === userId)!; u.idStatus = 'rejected'; u.idNote = reason.trim();
   notify(userId, { kind: 'review', title: 'We could not accept your student ID', text: reason.trim(), to: '/signup' });
-  audit('Rejected student ID', u.name, `${reason.trim()}. Photo deleted`);
+  audit('Rejected student ID', u.name, `${reason.trim()}. Photos deleted`);
   await forgetStudentId(userId);
 }
 
@@ -391,7 +430,7 @@ export async function createBooking(userId: string, hid: string, roomIdx: number
   if (live) throw new ApiError('Use startBookingPayment with real data.');
   await wait(2200);
   const u = getDb().users.find(x => x.id === userId)!; const h = hostelById(hid)!; const r = h.rooms[roomIdx]!;
-  if (!u.emailVerified) throw new ApiError(u.verifyVia === 'id' ? 'Your student ID is still being checked. You can book once it is approved.' : 'Confirm your student email before booking.');
+  if (!u.emailVerified) throw new ApiError(u.verifyVia === 'id' ? 'Your student ID is not approved yet. You can book once it is.' : 'Confirm your student email before booking.');
   const sem = bookingSem(h); if (!sem) throw new ApiError(`${h.name} is not taking bookings right now.`);
   const SEM = semName(sem);
   if (hasBookingFor(userId, SEM)) throw new ApiError('You already have a booking for this semester.');
@@ -1155,6 +1194,7 @@ export async function listReviewQueue() {
     listings: db.hostels.filter(h => h.status === 'in_review').map(h => ({ hostel: h, owner: db.users.find(u => u.id === h.ownerId), docs: db.docs.filter(d => d.hostelId === h.id),
       rooms: db.rooms.filter(r => r.hostelId === h.id).length, since: h.submittedAt ?? isoNow() })).sort((a, b) => a.since.localeCompare(b.since)),
     students: db.users.filter(u => u.role === 'student' && u.idStatus === 'pending').map(u => ({ user: safe(u), doc: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_id'),
+      selfie: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_selfie'), others: sameNumberClaims(u),
       uni: universityById(u.universityId), since: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_id')?.uploadedAt ?? u.joined ?? isoNow() }))
       .sort((a, b) => a.since.localeCompare(b.since)),
   };

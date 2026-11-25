@@ -22,7 +22,7 @@ const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperC
 
 /** Columns of each table, in snake_case. Anything else on the app's objects is not saved. */
 const COLS: Record<string, string[]> = {
-  universities: ['id', 'name', 'short', 'domain', 'area', 'lat', 'lng', 'logo', 'sems'],
+  universities: ['id', 'name', 'short', 'domain', 'area', 'lat', 'lng', 'logo', 'sems', 'email_ok'],
   profiles: ['id', 'role', 'name', 'email', 'username', 'phone', 'photo', 'university_id', 'email_verified', 'verified_until', 'hostel_id', 'owner_status', 'owner_note', 'suspended', 'suspend_reason', 'joined', 'last_active', 'verify_via', 'student_no', 'id_status', 'id_note'],
   owner_accounts: ['owner_id', 'payout', 'sub_paid_until', 'sub_grace_until', 'sub_reminded_at'],
   hostels: ['id', 'owner_id', 'name', 'uni', 'area', 'km', 'dir', 'rating', 'n_rev', 'owner_name', 'verified', 'fee', 'visit', 'floors', 'cols', 'amen', 'rooms', 'about', 'seed', 'photo_url', 'status', 'review_note', 'suspend_reason', 'paused_for', 'review_sections', 'blocks', 'location', 'rules', 'photos', 'sems', 'views', 'saves', 'submitted_at', 'listed_at'],
