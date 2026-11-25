@@ -31,8 +31,11 @@ if (typeof Deno !== 'undefined') {
     send: async m => {
       const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts');
       const client = new SMTPClient({ connection: { hostname: 'smtp.gmail.com', port: 465, tls: true, auth: { username: env('GMAIL_USER'), password: env('GMAIL_APP_PASSWORD') } } });
-      try { await client.send({ from: `Nestly <${env('GMAIL_USER')}>`, to: m.to, subject: m.subject, content: m.text }); }
-      finally { await client.close(); }
+      // Give Gmail 20 seconds. Closing the connection can fail after the email has already gone, so that error is ignored.
+      let timer = 0;
+      const timeout = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error('timed out waiting for Gmail')), 20000); });
+      try { await Promise.race([client.send({ from: `Nestly <${env('GMAIL_USER')}>`, to: m.to, subject: m.subject, content: m.text }), timeout]); }
+      finally { clearTimeout(timer); await Promise.resolve().then(() => client.close()).catch(() => undefined); }
     },
   }));
 }

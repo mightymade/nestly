@@ -15,6 +15,20 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 export const isRealEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !e.endsWith('@sms.nestly.app');
 
+/** Turns an SMTP error into a short reason the owner (and whoever reads the logs) can act on. */
+export function mailProblem(e: unknown): string {
+  const m = String((e as Error)?.message ?? e);
+  if (/535|username and password|badcredentials|invalid login/i.test(m)) return 'Gmail refused the app password';
+  if (/5\.7\.9|application-specific/i.test(m)) return 'Gmail needs an app password, not the normal password';
+  if (/534|web browser|5\.7\.14/i.test(m)) return 'Gmail wants the account owner to sign in once in a browser';
+  if (/550|5\.7\.1|blocked|spam|unsolicited/i.test(m)) return 'Gmail blocked the message';
+  if (/5\.4\.5|quota|limit/i.test(m)) return 'Gmail daily sending limit reached';
+  if (/421|try again later|temporar/i.test(m)) return 'Gmail asked us to try again later';
+  if (/timed out|timeout/i.test(m)) return 'Gmail did not answer in time';
+  if (/connect|refused|dns|network/i.test(m)) return 'could not reach Gmail';
+  return 'Gmail gave an error';
+}
+
 export type Mail = { to: string; subject: string; text: string; html: string };
 export type Env = { url: string; serviceKey: string; site: string; send: (m: Mail) => Promise<void> };
 
@@ -64,7 +78,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     await env.send(inviteMail({ to: inv.email, name: inv.name, hostel: h.name, owner: me.name, code: inv.code, site: env.site }));
   } catch (e) {
     console.error('send-invite failed', e);
-    return reply({ error: 'We could not send the email. Share the invite on WhatsApp instead.' }, 502);
+    return reply({ error: `We could not send the email (${mailProblem(e)}). Share the invite on WhatsApp instead.`, reason: mailProblem(e) }, 502);
   }
   await admin.from('audit').insert({ actor_id: me.id, actor_role: 'owner', action: 'Emailed custodian invite', target: h.name, detail: `${inv.name} (${inv.email})` });
   return reply({ sent: inv.email });
@@ -80,8 +94,11 @@ if (typeof Deno !== 'undefined') {
     send: async m => {
       const { SMTPClient } = await import('https://deno.land/x/denomailer@1.6.0/mod.ts');
       const client = new SMTPClient({ connection: { hostname: 'smtp.gmail.com', port: 465, tls: true, auth: { username: env('GMAIL_USER'), password: env('GMAIL_APP_PASSWORD') } } });
-      try { await client.send({ from: `Nestly <${env('GMAIL_USER')}>`, to: m.to, subject: m.subject, content: m.text, html: m.html }); }
-      finally { await client.close(); }
+      // Give Gmail 20 seconds. Closing the connection can fail after the email has already gone, so that error is ignored.
+      let timer = 0;
+      const timeout = new Promise<never>((_, no) => { timer = setTimeout(() => no(new Error('timed out waiting for Gmail')), 20000); });
+      try { await Promise.race([client.send({ from: `Nestly <${env('GMAIL_USER')}>`, to: m.to, subject: m.subject, content: m.text, html: m.html }), timeout]); }
+      finally { clearTimeout(timer); await Promise.resolve().then(() => client.close()).catch(() => undefined); }
     },
   }));
 }

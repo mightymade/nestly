@@ -1689,3 +1689,7 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 /* The count badge never runs under the Satellite button */
 .cmap-badge { max-width: calc(100% - 168px) }
 .cmap-badge span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+/* Computer dialogs: buttons fit their words and sit on the right, as in every desktop app. Phones keep full-width buttons for the thumb. */
+.dialog .btn-block { width: auto; min-width: 120px; align-self: flex-end }
+.dialog .ov-foot { justify-content: flex-end }

@@ -37,13 +37,15 @@ export async function handle(req: Request, env: { url: string; serviceKey: strin
   const admin = createClient(env.url, env.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   // Too many tries? Count failures for this account, and all tries from this address.
   const since = new Date(Date.now() - 15 * 60000).toISOString();
-  const { count: fails } = await admin.from('login_events').select('id', { count: 'exact', head: true }).ilike('login', login).eq('ok', false).gte('at', since);
+  // The three checks before the password do not depend on each other, so they run at the same time.
+  const [{ count: fails }, okIp, email] = await Promise.all([
+    admin.from('login_events').select('id', { count: 'exact', head: true }).ilike('login', login).eq('ok', false).gte('at', since),
+    ip ? admin.rpc('rate_ok', { p_key: 'login-ip:' + ip, p_max: 30, p_seconds: 900 }).then(r => r.data) : Promise.resolve(true),
+    // Username to email, on the server only.
+    login.includes('@') ? Promise.resolve(login) : admin.rpc('email_for_login', { p_login: login }).then(r => (r.data as string | null) ?? ''),
+  ]);
   if ((fails ?? 0) >= 5) return reply({ error: 'Too many wrong passwords. Wait 15 minutes, or reset your password.', field: 'password', locked: true }, 429);
-  if (ip) { const { data: okIp } = await admin.rpc('rate_ok', { p_key: 'login-ip:' + ip, p_max: 30, p_seconds: 900 }); if (okIp === false) return reply({ error: 'Too many tries from this network. Wait 15 minutes.' }, 429); }
-
-  // Username to email, on the server only.
-  let email = login;
-  if (!login.includes('@')) { const { data } = await admin.rpc('email_for_login', { p_login: login }); email = (data as string | null) ?? ''; }
+  if (okIp === false) return reply({ error: 'Too many tries from this network. Wait 15 minutes.' }, 429);
   const anon = createClient(env.url, env.anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const res = email ? await anon.auth.signInWithPassword({ email, password, options: input.captchaToken ? { captchaToken: String(input.captchaToken) } : undefined }) : null;
   const err = res?.error; const user = res?.data.user;
@@ -55,15 +57,19 @@ export async function handle(req: Request, env: { url: string; serviceKey: strin
     if (/rate|too many/i.test(err?.message ?? '')) return reply({ error: 'Too many tries. Wait a few minutes.' }, 429);
     return reply({ error: NO_MATCH, field: 'password' }, 400);
   }
-  // A device we have not seen this account use before: tell the person by email.
-  const { data: seen } = await admin.from('login_events').select('device').eq('user_id', user.id).eq('ok', true).limit(200);
-  await admin.from('login_events').insert({ user_id: user.id, login, ok: true, ip, device, agent });
-  if (seen && seen.length && device && !seen.some(s => s.device === device)) {
-    const { data: p } = await admin.from('profiles').select('name').eq('id', user.id).maybeSingle();
-    const when = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' });
-    await admin.rpc('queue_mail', { p_to: user.email ?? '', p_subject: 'New sign-in to your Nestly account',
-      p_body: `Hello ${String(p?.name ?? '').split(' ')[0] || 'there'},\n\nYour Nestly account was just used to sign in on ${agent}, on ${when} (Uganda time).\n\nIf this was you, you can ignore this email.\nIf it was not you, reset your password now from the login page, and tell us at the Nestly security page.\n\nNestly` });
-  }
+  // Recording the login and the new-device email happen after the reply, so the person does not wait for them.
+  const after = (async () => {
+    const { data: seen } = await admin.from('login_events').select('device').eq('user_id', user.id).eq('ok', true).limit(200);
+    await admin.from('login_events').insert({ user_id: user.id, login, ok: true, ip, device, agent });
+    if (seen && seen.length && device && !seen.some(s => s.device === device)) {
+      const { data: p } = await admin.from('profiles').select('name').eq('id', user.id).maybeSingle();
+      const when = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' });
+      await admin.rpc('queue_mail', { p_to: user.email ?? '', p_subject: 'New sign-in to your Nestly account',
+        p_body: `Hello ${String(p?.name ?? '').split(' ')[0] || 'there'},\n\nYour Nestly account was just used to sign in on ${agent}, on ${when} (Uganda time).\n\nIf this was you, you can ignore this email.\nIf it was not you, reset your password now from the login page, and tell us at the Nestly security page.\n\nNestly` });
+    }
+  })().catch(() => undefined);
+  // @ts-ignore EdgeRuntime exists on Supabase: it keeps the function alive until `after` finishes.
+  if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(after); else await after;
   return reply({ access_token: res.data.session.access_token, refresh_token: res.data.session.refresh_token });
 }
 
