@@ -106,8 +106,8 @@ This is the set-up used by the live prototype and our tests.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Follow [`supabase/SETUP.md`](supabase/SETUP.md) step by step:
-   - run the files in `supabase/migrations` in order (`0001` to `0009`), then `supabase/sample_data.sql`
-   - deploy the two server functions, `payments` and `accept-invite`
+   - run the files in `supabase/migrations` in order (`0001` to `0012`), then `supabase/sample_data.sql`
+   - deploy the server functions in `supabase/functions` (`payments`, `login`, `accept-invite`, `student-signup`, `send-invite`, `send-mail`, `backup`) and set up the scheduled jobs (SETUP.md, section 8)
    - add your Flutterwave **sandbox** keys as function secrets
 3. Copy `.env.example` to `.env` and fill in your project's URL and **anon** (public) key.
 4. Run `npm ci`, then `npm run dev`.
@@ -132,6 +132,7 @@ All accounts are fictitious. The password for every account is **`nestly123`**.
 | Role | Log in with | Try this |
 |---|---|---|
 | Student | `sarah.atim@ucu.ac.ug` | Find a room, book it, pay in the sandbox, cancel, review |
+| Student waiting for ID check | `brian.ssemwanga@gmail.com` | See what a student on the student ID route sees before approval |
 | Custodian | `peter.k` | Give a room, record the balance, check in, open the gate QR |
 | Owner | `grace.n` | Check bookings and fees, invite staff, pay the subscription |
 | Owner awaiting approval | `daniel.o` | See what a new owner sees before approval |
@@ -166,12 +167,22 @@ BASE=http://127.0.0.1:5173 PGURL=<database address> npm test
 |---|---|---|
 | Web app | React 18, TypeScript, Vite | All screens; hosted on Vercel |
 | Database | PostgreSQL on Supabase | 19 tables; row-level security decides what each user can see |
-| Logins | Supabase Auth | Sign-up, login and email confirmation |
+| Logins | Supabase Auth | Sign-up, login and email confirmation; student ID route checked by an admin; two-step login (required for admins) |
 | Files | Supabase Storage | Public hostel photos; private owner documents |
 | Payments | Supabase Edge Function + Flutterwave sandbox | Starts each charge and verifies it before a booking is confirmed |
 | Maps | Leaflet + OpenStreetMap | Hostel locations and walking routes |
 
 **Security in short:** the browser is never trusted. Every rule (who can see what, one booking per semester, check-in only after the balance is paid) is enforced in the database. Payment secrets live only on the server, and the mobile money PIN is typed only on the payer's phone.
+
+**Security features:**
+- Admins must use two-step login (an authenticator app), and confirm it is them again before approving or pausing accounts. Owners can turn it on too.
+- All logins go through a server function: 5 wrong passwords lock an account for 15 minutes, usernames never reveal emails, and people are emailed when a new device signs in. An optional Cloudflare Turnstile check stops bots at sign-up, login and password reset.
+- A change to an owner's payout account waits 24 hours, can be cancelled from an email link, and needs an admin check if the name on the account is not the owner's.
+- The visitor gate shows only "Sarah A." and needs the room number plus three letters of the name; staff contact details are visible only to people who work or stay at that hostel.
+- The activity log is stamped by the database and cannot be faked or deleted; the last bed is locked while a student pays.
+- Rate limits on sign-up, login, invites, payments and the gate; security headers on every page; private document links expire after 15 minutes.
+- Admins see warning signs on the Overview (repeated wrong passwords, one phone paying for many students, many cancellations, shared student numbers, payout changes). Anyone can report a problem at `/security` (also in `/.well-known/security.txt`).
+- Daily backups to private storage with a restore script, automatic deletion of old data, and Dependabot plus a GitHub Checks workflow.
 
 ---
 
@@ -187,7 +198,7 @@ Nestly-v0/
 │   └── data/             Data types and sample catalogue
 ├── supabase/
 │   ├── migrations/       Database tables, security rules and functions (run in order)
-│   ├── functions/        Server code: payments and accept-invite
+│   ├── functions/        Server code: payments, accept-invite and student-signup
 │   ├── sample_data.sql   Fictitious sample data
 │   └── SETUP.md          Step-by-step database set-up
 ├── tests/                Test scripts and evidence

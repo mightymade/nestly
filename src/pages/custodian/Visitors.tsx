@@ -61,7 +61,7 @@ export function Visitors() {
     { key: 'in', header: 'In at', cell: v => <span className="num">{t12(v.tin)}</span> },
     { key: 'dur', header: 'Inside for', cell: v => { const s = state(v); return <span className={'vstay' + (s.late ? ' bad' : s.long ? ' warn' : '')}><span className="num">{span(s.m)}</span>{(s.late || s.long) && <span className="tiny">{s.late ? 'past hours' : 'over 3 h'}</span>}</span>; } },
     { key: 'via', header: 'Signed in', cell: v => <span className="muted">{v.via === 'QR' ? 'Scanned gate QR' : 'Logged by you'}</span> },
-    { key: 'act', header: '', align: 'right', cell: v => <span className="row-sm" style={{ gap: 6, justifyContent: 'flex-end' }}>
+    { key: 'act', header: '', align: 'right', cell: v => <span className="row-sm" style={{ gap: 8, justifyContent: 'flex-end' }}>
       {v.phone ? <a className="icon-btn" href={`tel:${v.phone.replace(/\s/g, '')}`} aria-label={`Call ${v.name}`} title={`Call ${v.phone}`}><Phone size={16} /></a> : <span className="icon-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />}
       <Btn size="sm" kind={state(v).late ? 'primary' : 'secondary'} onClick={() => out(v)}><LogOut size={15} />Mark as left</Btn></span> },
   ];
@@ -126,7 +126,7 @@ function InsideCard({ v, host, now, close, onOut, compact }: { v: Visitor; host?
     </div>
     <div className="vcard-actions">
       <span className="vmeta" title={`In at ${t12(v.tin)}, ${v.via === 'QR' ? 'QR scan' : 'logged by you'}`}>In at <b className="num">{t12(v.tin)}</b> · {v.via === 'QR' ? 'QR scan' : 'Logged by you'}</span>
-      <span className="row-sm" style={{ gap: 6 }}>
+      <span className="row-sm" style={{ gap: 8 }}>
         {v.phone && <a className="btn btn-secondary btn-sm vcall" href={`tel:${v.phone.replace(/\s/g, '')}`} aria-label={`Call ${v.name}`} title={v.phone}><Phone size={15} /></a>}
         <Btn size="sm" kind={late ? 'primary' : 'secondary'} onClick={onOut}><LogOut size={15} />Mark as left</Btn>
       </span>

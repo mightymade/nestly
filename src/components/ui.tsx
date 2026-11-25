@@ -67,7 +67,7 @@ export function Skeleton({ rows = 3, h = 88 }: { rows?: number; h?: number }) {
 }
 
 export function Logo() {
-  return <span className="logo"><span className="logo-mark"><LogoMark /></span>Nestly</span>;
+  return <span className="logo"><span className="logo-mark"><LogoMark /></span><span className="logo-word">Nestly</span></span>;
 }
 
 /** A person's name with the blue verified tick once their student email is confirmed. */

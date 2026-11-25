@@ -29,9 +29,9 @@ export function NotificationBell() {
     return () => { document.removeEventListener('mousedown', out); document.removeEventListener('keydown', key); };
   }, [open, phone]);
   const go = (n: Notification) => { markRead(n.id); setOpen(false); nav(n.to); };
-  const items = list.length ? <div className="stack-sm" style={{ gap: 2 }}>{list.map(n => { const I = KIND_ICON[n.kind];
+  const items = list.length ? <div className="stack-sm" style={{ gap: 4 }}>{list.map(n => { const I = KIND_ICON[n.kind];
     return <button key={n.id} className={'notif' + (n.read ? ' read' : '')} onClick={() => go(n)}><span className={'icon-tile sm ' + (n.read ? '' : 'primary')}><I size={17} /></span>
-      <span className="grow"><span className="t">{n.title}</span><span className="small" style={{ display: 'block', marginTop: 2 }}>{n.text}</span>
+      <span className="grow"><span className="t">{n.title}</span><span className="small" style={{ display: 'block', marginTop: 4 }}>{n.text}</span>
         <span className="tiny muted" title={fullDate(n.at)} style={{ display: 'block', marginTop: 4 }}>{timeAgo(n.at)}</span></span>
       {!n.read && <span className="unread" aria-label="Unread" />}</button>; })}</div>
     : <EmptyState bare icon={<BellOff size={24} />} title="Nothing new today" text="Today's bookings, visitors and notices show up here." />;

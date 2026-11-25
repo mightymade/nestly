@@ -33,7 +33,7 @@ export function SetupForm({ uid, onDone }: { uid: string; onDone: () => void | P
     try { await finishTwoStep(uid, f.factorId, code); await reload(); await onDone(); } catch (x) { setErr((x as ApiError).message); } finally { setBusy(false); }
   }
   return <form className="stack" onSubmit={go} noValidate>
-    <ol className="small stack-sm" style={{ paddingLeft: 18, margin: 0 }}>
+    <ol className="small stack-sm" style={{ paddingLeft: 16, margin: 0 }}>
       <li>Install an authenticator app on your phone, such as Google Authenticator or Microsoft Authenticator.</li>
       <li>In the app, add an account and scan this code. If you cannot scan, type the key below it.</li>
       <li>Type the 6-digit code the app shows.</li>
