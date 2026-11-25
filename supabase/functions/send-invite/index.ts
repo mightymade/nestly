@@ -40,7 +40,7 @@ export function inviteMail(o: { to: string; name: string; hostel: string; owner:
   const html = `<!doctype html><html><body style="margin:0;background:#F2F4FA;font-family:Arial,Helvetica,sans-serif;color:#1A1C29">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:16px;padding:28px">
-<tr><td style="font-size:20px;font-weight:bold;color:#4F5BEA;padding-bottom:16px">Nestly</td></tr>
+<tr><td style="padding-bottom:20px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="vertical-align:middle"><img src="${esc(o.site.replace(/\/$/, ''))}/email-logo.png" width="36" height="36" alt="Nestly" style="display:block;border:0;border-radius:8px"></td><td style="vertical-align:middle;padding-left:10px;font-size:20px;font-weight:bold;color:#1A1C29">Nestly</td></tr></table></td></tr>
 <tr><td style="font-size:16px;line-height:24px">Hello ${esc(first)},<br><br>${esc(o.owner)} has invited you to work as custodian at <b>${esc(o.hostel)}</b> on Nestly.</td></tr>
 <tr><td style="padding:24px 0"><a href="${esc(link)}" style="display:inline-block;background:#4F5BEA;color:#fff;text-decoration:none;font-weight:bold;padding:14px 22px;border-radius:12px">Set up my account</a></td></tr>
 <tr><td style="font-size:14px;line-height:21px;color:#3B3F51">If it asks for a code, use<div style="font-size:24px;font-weight:bold;letter-spacing:2px;color:#1A1C29;padding:8px 0">${esc(o.code)}</div>The invite works for 7 days.</td></tr>

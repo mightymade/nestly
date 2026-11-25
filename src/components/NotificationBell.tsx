@@ -1,3 +1,4 @@
+import { ActionButton } from './ui';
 import { Bell, BellOff, Flag, ShieldCheck, Wallet, CalendarCheck, DoorOpen, Megaphone, UserRound, Wrench, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -35,7 +36,7 @@ export function NotificationBell() {
         <span className="tiny muted" title={fullDate(n.at)} style={{ display: 'block', marginTop: 4 }}>{timeAgo(n.at)}</span></span>
       {!n.read && <span className="unread" aria-label="Unread" />}</button>; })}</div>
     : <EmptyState bare icon={<BellOff size={24} />} title="Nothing new today" text="Today's bookings, visitors and notices show up here." />;
-  const markAll = unread > 0 && <button className="btn btn-text btn-sm" onClick={() => markAllRead(me.id)}>Mark all as read</button>;
+  const markAll = unread > 0 && <ActionButton className="btn btn-text btn-sm" onClick={() => markAllRead(me.id)}>Mark all as read</ActionButton>;
   return <div ref={box} style={{ position: 'relative' }}>
     <button className="round-btn" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open} onClick={() => setOpen(o => !o)}>
       <Bell size={19} />{unread > 0 && <span className="dot" />}</button>

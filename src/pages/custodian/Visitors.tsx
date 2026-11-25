@@ -7,7 +7,7 @@ import { Pill } from '../../components/Pill';
 import { Segmented } from '../../components/Segmented';
 import { EmptyState, ErrorState } from '../../components/States';
 import { useToast } from '../../components/Toast';
-import { Avatar, Btn, Skeleton } from '../../components/ui';
+import { Avatar, Btn, Skeleton, ActionButton } from '../../components/ui';
 import type { Visitor } from '../../data/types';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { hostelById, listTenants, listVisitors, signOutVisitor, undoSignOut } from '../../services/api';
@@ -111,7 +111,7 @@ function InsideCard({ v, host, now, close, onOut, compact }: { v: Visitor; host?
     </div>
     <div className="vm-acts">
       {v.phone && <a className="vm-btn" href={`tel:${v.phone.replace(/\s/g, '')}`} aria-label={`Call ${v.name}`}><Phone size={17} /></a>}
-      <button className="vm-btn primary" onClick={onOut} aria-label={`Mark ${first} as left`} title="Mark as left"><LogOut size={17} /></button>
+      <ActionButton className="vm-btn primary" onClick={onOut} aria-label={`Mark ${first} as left`} title="Mark as left"><LogOut size={17} /></ActionButton>
     </div>
   </div>;
   return <div className="vcard">

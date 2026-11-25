@@ -1693,3 +1693,8 @@ a.sc:hover, button.sc:hover { background: var(--surface-2) } button.sc { text-al
 /* Computer dialogs: buttons fit their words and sit on the right, as in every desktop app. Phones keep full-width buttons for the thumb. */
 .dialog .btn-block { width: auto; min-width: 120px; align-self: flex-end }
 .dialog .ov-foot { justify-content: flex-end }
+
+/* A small button that is working: the spinner takes the icon's place, the size stays the same. */
+.is-busy { position: relative; cursor: progress }
+.is-busy > :not(.spinner) { visibility: hidden }
+.is-busy > .spinner { position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border-width: 2px }

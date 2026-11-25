@@ -1,7 +1,7 @@
 import { ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Btn, Field, Logo, TextInput } from '../../components/ui';
+import { Btn, Field, Logo, TextInput, ActionButton } from '../../components/ui';
 import { useToast } from '../../components/Toast';
 import { ApiError, logout } from '../../services/api';
 import { reload } from '../../services/db';
@@ -66,7 +66,7 @@ export function TwoStepPage() {
     <Logo /><h1 style={{ fontSize: 24 }}>{on === false ? 'Set up two-step login' : 'Enter your code'}</h1>
     <p className="muted small">{on === false ? 'Admins can see everyone’s documents and approve owners, so a password alone is not enough. Set up an authenticator app to continue.' : 'Your account uses two-step login. Enter the code from your phone to finish logging in.'}</p>
     {on === null ? <p className="muted small">Checking...</p> : on ? <CodeForm onDone={done} cta="Log in" /> : <SetupForm uid={me.id} onDone={done} />}
-    <button type="button" className="btn btn-text btn-sm" onClick={() => logout()}>Use another account</button>
+    <ActionButton type="button" className="btn btn-text btn-sm" onClick={() => logout()}>Use another account</ActionButton>
   </div></main>;
 }
 const homeOf = (u: { role: string; ownerStatus?: string }) => u.role === 'student' ? '/s/explore' : u.role === 'custodian' ? '/c/today' : u.role === 'admin' ? '/a/overview' : u.ownerStatus === 'incomplete' ? '/owner/signup' : '/o/overview';

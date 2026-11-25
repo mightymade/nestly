@@ -6,7 +6,7 @@ import { useToast } from '../../components/Toast';
 import { Btn, Field, PasswordInput, TextInput } from '../../components/ui';
 import { ApiError, login, requestPasswordReset, idNeedsPhotos } from '../../services/api';
 import { resetDemo } from '../../services/api';
-import { live, sb } from '../../services/supabase';
+import { live } from '../../services/supabase';
 import { AuthLayout } from './AuthLayout';
 import { Captcha, captchaOn } from '../../components/Captcha';
 import { aalNow, codeNeeded, setCodePending, twoStepOn } from '../../services/security';
@@ -21,7 +21,7 @@ export function Login() {
   const [captcha, setCaptcha] = useState(''); const [again, setAgain] = useState(0);
   const go = (u: User) => { const next = takeNext(); nav(u.role === 'student' ? (idNeedsPhotos(u) ? '/signup' : next ?? '/s/explore') : u.role === 'custodian' ? '/c/today' : u.role === 'admin' ? '/a/overview' : u.ownerStatus === 'incomplete' ? '/owner/signup' : '/o/overview', { replace: true }); };
   // Wake the login server function while the person types, so the first log in does not wait for it to start.
-  useEffect(() => { if (live) sb!.functions.invoke('login', { body: {} }).catch(() => undefined); }, []);
+  useEffect(() => { if (live) fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/login`, { method: 'OPTIONS' }).catch(() => undefined); }, []);
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!idv.trim()) return setErr({ field: 'id', msg: 'Enter your email or username.' });

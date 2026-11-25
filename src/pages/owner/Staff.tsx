@@ -6,7 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { Pill } from '../../components/Pill';
 import { EmptyState, ErrorState } from '../../components/States';
 import { useToast } from '../../components/Toast';
-import { Avatar, Btn, Field, Skeleton, TextInput } from '../../components/ui';
+import { Avatar, Btn, Field, Skeleton, TextInput, ActionButton } from '../../components/ui';
 import type { Hostel, User } from '../../data/types';
 import { copyText, timeAgo } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
@@ -49,13 +49,13 @@ function View({ ownerId }: { ownerId: string }) {
               <Avatar user={{ name: i.name }} size={40} />
               <div className="min0 grow"><b className="ink clamp1">{i.name}</b><span className="tiny muted clamp1">Code <b className="num">{i.code}</b> · {old ? 'expired' : `sent ${i.at ? timeAgo(i.at) : ''}`}</span></div>
               <Pill tone={old ? 'danger' : 'warn'}>{old ? 'Expired' : 'Invited'}</Pill>
-              <button className="vm-btn" onClick={async () => { try { const to = await resendInvite(i.code); toast(to ? `Invite emailed again to ${to}` : `Invite for ${i.name.split(' ')[0]} renewed for 7 days`); } catch (x) { toast(`Renewed for 7 days, but ${(x as Error).message.charAt(0).toLowerCase()}${(x as Error).message.slice(1)}`); } }} aria-label={`Resend invite to ${i.name}`} title="Resend"><RefreshCw size={16} /></button>
-              <button className="vm-btn" onClick={async () => { await cancelInvite(i.code); toast('Invite cancelled'); }} aria-label={`Cancel invite to ${i.name}`} title="Cancel"><X size={16} /></button>
+              <ActionButton className="vm-btn" onClick={async () => { try { const to = await resendInvite(i.code); toast(to ? `Invite emailed again to ${to}` : `Invite for ${i.name.split(' ')[0]} renewed for 7 days`); } catch (x) { toast(`Renewed for 7 days, but ${(x as Error).message.charAt(0).toLowerCase()}${(x as Error).message.slice(1)}`); } }} aria-label={`Resend invite to ${i.name}`} title="Resend"><RefreshCw size={16} /></ActionButton>
+              <ActionButton className="vm-btn" onClick={async () => { try { await cancelInvite(i.code); toast('Invite cancelled'); } catch (x) { toast((x as Error).message); } }} aria-label={`Cancel invite to ${i.name}`} title="Cancel"><X size={16} /></ActionButton>
             </div>; })}
           </section>; })}</div>}
     {invite && data && <InviteDialog hostels={live} start={invite} onClose={() => setInvite(null)} />}
     {remove && <Overlay title={`Remove ${remove.name.split(' ')[0]}?`} onClose={() => setRemove(null)} width={440}
-      footer={<><Btn kind="secondary" onClick={() => setRemove(null)}>Keep</Btn><Btn kind="danger" onClick={async () => { await removeCustodian(remove.id); toast(`${remove.name} removed`); setRemove(null); }}><UserMinus size={15} />Remove</Btn></>}>
+      footer={<><Btn kind="secondary" onClick={() => setRemove(null)}>Keep</Btn><Btn kind="danger" onClick={async () => { try { await removeCustodian(remove.id); toast(`${remove.name} removed`); setRemove(null); } catch (x) { toast((x as Error).message); } }}><UserMinus size={15} />Remove</Btn></>}>
       <p>{remove.name.split(' ')[0]} will be logged out and can no longer open {data?.hostels.find(h => h.id === remove.hostelId)?.name}. This cannot be undone.</p></Overlay>}
   </>;
 }

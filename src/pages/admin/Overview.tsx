@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '../../components/Card';
 import { PageHeader } from '../../components/PageHeader';
 import { ErrorState } from '../../components/States';
-import { Skeleton } from '../../components/ui';
+import { Skeleton, ActionButton } from '../../components/ui';
 import { timeAgo, ugx } from '../../lib/format';
 import { useIsPhone } from '../../lib/useIsPhone';
 import { adminOverview, closeSecurityReport, listSecurityReports, securitySignals } from '../../services/api';
@@ -79,7 +79,7 @@ function SecurityCard() {
           <span className="grow small">{r.text}</span>{r.to && <Link to={r.to} className="btn btn-text btn-sm">Open</Link>}</li>)}
         {open.map(r => <li key={r.id}><span className="icon-tile sm danger"><ShieldAlert size={15} /></span>
           <span className="grow small"><b className="ink">Security report</b> {timeAgo(r.at)}: {r.text}{r.contact && <span className="muted"> · Contact: {r.contact}</span>}</span>
-          <button className="btn btn-text btn-sm" onClick={async () => { await closeSecurityReport(r.id); toast('Report closed'); reload(); }}>Close</button></li>)}
+          <ActionButton className="btn btn-text btn-sm" onClick={async () => { await closeSecurityReport(r.id); toast('Report closed'); reload(); }}>Close</ActionButton></li>)}
       </ul>}
   </Card>;
 }
