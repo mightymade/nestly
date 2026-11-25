@@ -40,6 +40,7 @@ export const semBookings = (hid: string, s: Semester) => getDb().bookings.filter
 export const bookingSem = (h: Hostel) => { const today = ymd(); return hostelSems(h).find(s => s.open && s.end >= today) ?? null; };
 
 import { ApiError } from './errors';
+import { deviceId, freshAuth, setCodePending, twoStepOn } from './security';
 import { removeDocFile, removeHostelPhotos, uploadDocFile, uploadHostelPhotos } from './files';
 export { ApiError };
 
@@ -52,27 +53,28 @@ const custodiansOf = (hostelId: string) => getDb().users.filter(u => u.role === 
 
 /* ---------- Auth ---------- */
 /** Live mode log in: usernames are turned into the account's email first, then Supabase checks the password. */
-async function liveLogin(idOrEmail: string, password: string) {
-  const { data: email, error: e1 } = await sb!.rpc('email_for_login', { p_login: idOrEmail.trim() });
-  if (e1) throw new ApiError(friendly(e1), 'id');
-  if (!email) throw new ApiError('We could not find an account with that username.', 'id');
-  const { data, error } = await sb!.auth.signInWithPassword({ email: email as string, password });
-  if (error) {
-    if (/confirm/i.test(error.message)) throw new ApiError('Confirm your email first. Open the link we sent you when you signed up.', 'id');
-    if (/invalid/i.test(error.message)) throw new ApiError(idOrEmail.includes('@') ? 'That email and password do not match. Try again or reset your password.' : 'That password is not right. Try again or reset it.', 'password');
-    throw new ApiError(friendly(error), 'id');
+async function liveLogin(idOrEmail: string, password: string, captchaToken?: string) {
+  // The login server function turns usernames into emails on the server, slows down guessing and notes new devices.
+  const { data: res, error: e1 } = await sb!.functions.invoke('login', { body: { login: idOrEmail.trim(), password, device: deviceId(), captchaToken } });
+  if (e1 || !res?.access_token) {
+    let msg = 'We could not log you in. Try again.'; let field: string | undefined = 'id';
+    try { const body = await (e1 as { context?: Response })?.context?.json(); if (body?.error) { msg = body.error; field = body.field; } } catch { /* keep the general message */ }
+    throw new ApiError(msg, field);
   }
+  const { data, error } = await sb!.auth.setSession({ access_token: res.access_token, refresh_token: res.refresh_token });
+  if (error || !data.user) throw new ApiError(friendly(error ?? new Error('Could not start the session.')), 'id');
   await reload();
-  const u = getDb().users.find(x => x.id === data.user.id);
+  const u = getDb().users.find(x => x.id === data.user!.id);
   if (!u || u.suspended) { await sb!.auth.signOut(); await clearAndReload(); throw new ApiError(u ? 'Your account is paused. Contact support@nestly.app.' : 'This account is not set up. Contact support@nestly.app.', 'id'); }
   u.lastActive = isoNow(); await commit().catch(() => undefined);
   return safe(u);
 }
 /** Live mode sign up. Supabase emails a confirmation link that brings the person to the login page. */
-async function liveSignUp(email: string, password: string, _back: string, meta: Record<string, unknown>) {
+async function liveSignUp(email: string, password: string, _back: string, meta: Record<string, unknown>, captchaToken?: string) {
   // The confirmation link lands on /confirmed, which signs the person out and sends them to the login page.
-  const { data, error } = await sb!.auth.signUp({ email, password, options: { emailRedirectTo: siteUrl() + '/confirmed', data: meta } });
+  const { data, error } = await sb!.auth.signUp({ email, password, options: { emailRedirectTo: siteUrl() + '/confirmed', data: meta, captchaToken } });
   if (error) {
+    if (/captcha/i.test(error.message)) throw new ApiError('Please complete the check that you are not a robot, then try again.');
     if (/registered|exists/i.test(error.message)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
     if (/password/i.test(error.message)) throw new ApiError('Choose a stronger password: 8 or more characters with letters and numbers.', 'password');
     if (/rate|seconds/i.test(error.message)) throw new ApiError('Too many sign-ups from here just now. Wait a minute and try again.');
@@ -89,8 +91,8 @@ export function sessionUser(): User | null {
   return u && !u.suspended ? safe(u) : null;
 }
 /** Logs someone in. Takes an email or username and a password. Returns the user, or throws ApiError with `field` set to "id" or "pw". */
-export async function login(idOrEmail: string, password: string) {
-  if (live) return liveLogin(idOrEmail, password);
+export async function login(idOrEmail: string, password: string, captchaToken?: string) {
+  if (live) return liveLogin(idOrEmail, password, captchaToken);
   await wait(600);
   const key = idOrEmail.trim().toLowerCase();
   const u = getDb().users.find(x => x.email.toLowerCase() === key || x.username?.toLowerCase() === key);
@@ -103,14 +105,19 @@ export async function login(idOrEmail: string, password: string) {
 }
 /** Ends the session on this device. */
 export async function logout() {
+  setCodePending(false);
   if (live) { await sb!.auth.signOut(); await clearAndReload(); return; }
   await wait(200); storage.remove(SESSION); await commit();
 }
 /** Sends a reset link if the email has an account. Always looks successful, so it never reveals who has an account. */
-export async function requestPasswordReset(email: string) {
+export async function requestPasswordReset(email: string, captchaToken?: string) {
   await wait(500);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError('Enter the email you signed up with.', 'email');
-  if (live) { const { error } = await sb!.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: siteUrl() + '/reset-password' }); if (error && /rate|network|fetch/i.test(error.message)) throw new ApiError(friendly(error)); }
+  if (live) {
+    const { error } = await sb!.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: siteUrl() + '/reset-password', captchaToken });
+    if (error && /captcha/i.test(error.message)) throw new ApiError('Please complete the check that you are not a robot, then try again.');
+    if (error && /rate|network|fetch/i.test(error.message)) throw new ApiError(friendly(error));
+  }
 }
 /** After opening a reset link: saves the new password for the person the link signed in. */
 export async function setNewPassword(password: string) {
@@ -139,12 +146,12 @@ function sendVerification(u: User) {
   getDb().mail.unshift(mail);
 }
 /** Creates a student account and emails a confirmation link. Takes university, name, email, optional phone and password. Returns the new user. */
-export async function signupStudent(input: { uniId: string; name: string; email: string; phone?: string; password: string }) {
+export async function signupStudent(input: { uniId: string; name: string; email: string; phone?: string; password: string; captchaToken?: string }) {
   await wait(700);
   const db = getDb(); const email = input.email.trim().toLowerCase();
   if (!emailMatchesUniversity(email, input.uniId)) throw new ApiError(`Use your ${universityById(input.uniId)?.short} student email. It must end with ${universityById(input.uniId)?.domain}.`, 'email');
   if (live) {
-    await liveSignUp(email, input.password, '/s/explore', { role: 'student', name: input.name.trim(), phone: input.phone || null, university_id: input.uniId });
+    await liveSignUp(email, input.password, '/s/explore', { role: 'student', name: input.name.trim(), phone: input.phone || null, university_id: input.uniId }, input.captchaToken);
     return { id: '', role: 'student', name: input.name.trim(), email, password: '', universityId: input.uniId, emailVerified: false } as User;
   }
   if (db.users.some(u => u.email.toLowerCase() === email)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
@@ -153,9 +160,10 @@ export async function signupStudent(input: { uniId: string; name: string; email:
   return safe(u);
 }
 /** Sends the sign-up confirmation email again, to an address that has not confirmed yet. */
-export async function resendConfirmation(email: string, _back = '/s/explore') {
+export async function resendConfirmation(email: string, _back = '/s/explore', captchaToken?: string) {
   if (!live) { const u = getDb().users.find(x => x.email === email); if (u) await resendVerification(u.id); return; }
-  const { error } = await sb!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: siteUrl() + '/confirmed' } });
+  const { error } = await sb!.auth.resend({ type: 'signup', email, options: { emailRedirectTo: siteUrl() + '/confirmed', captchaToken } });
+  if (error && /captcha/i.test(error.message)) throw new ApiError('Please complete the check that you are not a robot, then try again.');
   if (error) throw new ApiError(/rate|seconds/i.test(error.message) ? 'Wait a minute before asking for another email.' : friendly(error));
 }
 /** Sends the student email confirmation again. */
@@ -202,11 +210,11 @@ const SNO = /^[A-Z0-9/-]{4,30}$/;
  * Demo: the account is made at once and goes straight to the photo step.
  * Returns the email the link went to (live) or null (demo, already signed in).
  */
-export async function signupStudentWithId(input: { uniId: string; name: string; email: string; phone?: string; password: string; studentNo: string }): Promise<string | null> {
+export async function signupStudentWithId(input: { uniId: string; name: string; email: string; phone?: string; password: string; studentNo: string; captchaToken?: string }): Promise<string | null> {
   const email = input.email.trim().toLowerCase(); const studentNo = input.studentNo.trim().toUpperCase();
   if (!SNO.test(studentNo)) throw new ApiError('Enter your student number as it is on your student ID.', 'studentNo');
   if (live) {
-    const { data, error } = await sb!.functions.invoke('student-signup', { body: { uniId: input.uniId, name: input.name.trim(), email, password: input.password, studentNo, phone: input.phone || null, redirectTo: siteUrl() + '/confirmed' } });
+    const { data, error } = await sb!.functions.invoke('student-signup', { body: { uniId: input.uniId, name: input.name.trim(), email, password: input.password, studentNo, phone: input.phone || null, redirectTo: siteUrl() + '/confirmed', captchaToken: input.captchaToken } });
     if (error || !data?.email) {
       let msg = 'We could not create your account. Try again.'; let field: string | undefined;
       try { const body = await (error as { context?: Response })?.context?.json(); if (body?.error) { msg = body.error; field = body.field; } } catch { /* keep the general message */ }
@@ -261,6 +269,7 @@ async function forgetStudentId(userId: string) {
  * but for at most one year. The photos are then deleted.
  */
 export async function approveStudentId(userId: string, cardValidUntil: string) {
+  await adminFresh();
   await wait(500); await fresh(); const db = getDb(); const u = db.users.find(x => x.id === userId)!;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cardValidUntil)) throw new ApiError('Enter the date the card is valid until.', 'until');
   if (cardValidUntil <= ymd()) throw new ApiError('This card has expired. Reject it and ask for a current one.', 'until');
@@ -276,6 +285,7 @@ export async function approveStudentId(userId: string, cardValidUntil: string) {
 }
 /** Rejects a student ID with a reason the student can read. The photos are deleted; they can send new ones. */
 export async function rejectStudentId(userId: string, reason: string) {
+  await adminFresh();
   await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason so the student knows what to fix.', 'reason');
   const u = getDb().users.find(x => x.id === userId)!; u.idStatus = 'rejected'; u.idNote = reason.trim();
   notify(userId, { kind: 'review', title: 'We could not accept your student ID', text: reason.trim(), to: '/signup' });
@@ -528,25 +538,41 @@ const isStaffOf = (hostelId: string) => { const me = sessionUser(); const h = ho
   return !!me && (me.role === 'admin' || (me.role === 'custodian' && me.hostelId === hostelId) || (!!h && h.ownerId === me.id)); };
 const visitorFromRow = (r: Record<string, unknown>): Visitor => ({ id: String(r.id), hostelId: String(r.hostel_id), name: String(r.name), room: String(r.room), host: (r.host as string) ?? undefined,
   phone: (r.phone as string) ?? undefined, tin: String(r.tin), tout: (r.tout as string) ?? null, via: r.via as Visitor['via'], date: String(r.date) });
-/** "Who are you visiting?": residents whose name or room matches. Visitors at the gate only see matches after typing two letters. */
-export async function findResidents(hostelId: string, q: string): Promise<{ id: string; name: string; room: string }[]> {
+/** Shortens "Sarah Atim" to "Sarah A." for visitors at the gate. */
+const firstAndInitial = (n: string) => { const [a, b] = n.trim().split(/\s+/); return b ? `${a} ${b[0]!.toUpperCase()}.` : a ?? ''; };
+/**
+ * "Who are you visiting?" Staff can search by name or room. A visitor at the gate must give the exact room and at
+ * least three letters of the resident's first or last name, and sees only their first name and initial (finding F3).
+ */
+export async function findResidents(hostelId: string, q: string, room?: string): Promise<{ id: string; name: string; room: string }[]> {
   const s = q.trim().toLowerCase();
-  if (live && !isStaffOf(hostelId)) {
-    if (s.length < 2) return [];
-    const { data, error } = await sb!.rpc('search_residents', { p_hostel: hostelId, p_q: s }); if (error) throw new ApiError(friendly(error));
-    return (data ?? []) as { id: string; name: string; room: string }[];
+  if (!isStaffOf(hostelId)) {
+    const r = (room ?? '').trim().toUpperCase();
+    if (s.length < 3 || !r) return [];
+    if (live) {
+      const { data, error } = await sb!.rpc('find_resident', { p_hostel: hostelId, p_room: r, p_q: s }); if (error) throw new ApiError(friendly(error));
+      return ((data ?? []) as { id: string; label: string; room: string }[]).map(x => ({ id: x.id, name: x.label, room: x.room }));
+    }
+    await wait(150);
+    return getDb().tenants.filter(t => t.hostelId === hostelId && t.status === 'in' && t.roomId && t.room.toUpperCase() === r && t.name.toLowerCase().split(/\s+/).some(w => w.startsWith(s)))
+      .slice(0, 3).map(t => ({ id: t.id, name: firstAndInitial(t.name), room: t.room }));
   }
   await wait(120);
   return getDb().tenants.filter(t => t.hostelId === hostelId && t.status === 'in' && t.roomId && (!s || `${t.name} ${t.room}`.toLowerCase().includes(s)))
     .sort((a, b) => a.name.localeCompare(b.name)).map(t => ({ id: t.id, name: t.name, room: t.room }));
 }
 /** Signs a visitor in, from the gate QR or by the custodian. Takes name, room, who they visit and phone. Returns the visitor. */
-export async function signInVisitor(hostelId: string, input: { name: string; room: string; host?: string; phone?: string }, via: 'QR' | 'Custodian') {
+export async function signInVisitor(hostelId: string, input: { name: string; room: string; host?: string; hostId?: string; phone?: string }, via: 'QR' | 'Custodian') {
+  const { hostId, ...rest } = input;
   if (live && !isStaffOf(hostelId)) {
-    const { data, error } = await sb!.rpc('visitor_sign_in', { p_hostel: hostelId, p_name: input.name, p_room: input.room, p_host: input.host ?? '', p_phone: input.phone ?? '' });
+    const { data, error } = await sb!.rpc('visitor_check_in', { p_hostel: hostelId, p_name: input.name, p_tenant: hostId ?? '', p_phone: input.phone ?? '' });
     if (error) throw new ApiError(friendly(error)); return visitorFromRow(data as Record<string, unknown>);
   }
-  await wait(500); const v = { id: id('vs'), hostelId, ...input, tin: nowTime(), tout: null, via, date: todayIso() }; getDb().visitors.push(v); await commit(); return v;
+  await wait(500);
+  // At the gate the visitor only saw "Sarah A.", so the log gets the resident's full name from their record.
+  const t = hostId ? getDb().tenants.find(x => x.id === hostId && x.hostelId === hostelId) : undefined;
+  const v = { id: id('vs'), hostelId, ...rest, ...(t ? { host: t.name, room: t.room } : {}), tin: nowTime(), tout: null, via, date: todayIso() };
+  getDb().visitors.push(v); await commit(); return v;
 }
 /** A visitor's own pass, for the gate page on their phone. Returns null if the visit is over or unknown. */
 export async function getVisit(vid: string): Promise<Visitor | null> {
@@ -654,6 +680,8 @@ function syncTypeCounts(hostelId: string) {
     rt.taken = Math.min(rt.total, ts.filter(t => t.type === rt.t).length);
   });
 }
+/** Admin decisions need a recent password or two-step code (the database checks it too). */
+const adminFresh = async () => { const me = sessionUser(); if (me) await freshAuth(me.id, me.email); };
 function audit(action: string, target: string, detail = '') {
   const me = sessionUser(); if (!me) return;
   getDb().audit.unshift({ id: id('a'), at: isoNow(), actorId: me.id, actorRole: me.role, action, target, detail });
@@ -853,12 +881,12 @@ function bedStats(h: Hostel) {
 const weekStart = (d = new Date()) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 
 /** Starts an owner account. Takes name, phone, email and password. Returns the new user, not yet approved. */
-export async function signupOwner(input: { name: string; phone: string; email: string; password: string }) {
+export async function signupOwner(input: { name: string; phone: string; email: string; password: string; captchaToken?: string }) {
   await wait(700); const db = getDb(); const email = input.email.trim().toLowerCase();
   if (db.users.some(u => u.email.toLowerCase() === email)) throw new ApiError('An account with this email already exists. Log in instead.', 'email');
   if (!/^0?7\d{8}$/.test(input.phone.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit MTN or Airtel number.', 'phone');
   if (live) {
-    await liveSignUp(email, input.password, '/owner/signup', { role: 'owner', name: input.name.trim(), phone: input.phone.trim() });
+    await liveSignUp(email, input.password, '/owner/signup', { role: 'owner', name: input.name.trim(), phone: input.phone.trim() }, input.captchaToken);
     return { id: '', role: 'owner', name: input.name.trim(), email, password: '', emailVerified: false, ownerStatus: 'incomplete' } as User;
   }
   const u: User = { id: id('u'), role: 'owner', name: input.name.trim(), email, phone: input.phone, password: input.password, emailVerified: true, ownerStatus: 'incomplete', joined: isoNow() };
@@ -878,18 +906,79 @@ export async function uploadDoc(ownerId: string, kind: VerificationDoc['kind'], 
 }
 /** The documents an owner uploaded. */
 export const docsOf = (ownerId: string) => getDb().docs.filter(d => d.ownerId === ownerId);
-/** Saves the bank or mobile money account students pay into. Asks for the password when changing an existing account. */
+/** True when the two names share a word of three or more letters ("Grace Namuli" and "NAMULI GRACE A."). */
+export const namesMatch = (a: string, b: string) => { const w = (x: string) => x.toLowerCase().split(/[^a-z]+/).filter(y => y.length >= 3); const A = w(a); return w(b).some(y => A.includes(y)); };
+const payoutLabel = (p: NonNullable<User['payout']>) => `${p.method === 'bank' ? 'bank account' : p.method === 'mtn' ? 'MTN Mobile Money' : 'Airtel Money'} ending ${p.to.replace(/\s/g, '').slice(-4)}`;
+/**
+ * Saves the bank or mobile money account students pay into. The first account (during owner sign-up) is saved at
+ * once. After approval, a change waits 24 hours: the owner gets an email with a link to cancel it, and if the
+ * name on the new account does not match theirs, a Nestly admin must check it first.
+ * Asks for the password (or the two-step code) when changing an existing account.
+ */
 export async function savePayout(ownerId: string, payout: NonNullable<User['payout']>, password?: string) {
   await wait(500); const u = getDb().users.find(x => x.id === ownerId)!;
-  if (password !== undefined) {
+  if (payout.method !== 'bank' && !/^0?7\d{8}$/.test(payout.to.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit mobile money number.', 'to');
+  if (!payout.name.trim()) throw new ApiError('Enter the name on the account.', 'name');
+  if (live && u.payout && await twoStepOn(ownerId)) await freshAuth(ownerId, u.email);
+  else if (password !== undefined) {
     const ok = live ? !(await sb!.auth.signInWithPassword({ email: u.email, password })).error : u.password === password;
     if (!ok) throw new ApiError('That password is not right.', 'password');
   }
-  if (payout.method !== 'bank' && !/^0?7\d{8}$/.test(payout.to.replace(/\s/g, ''))) throw new ApiError('Enter a 10-digit mobile money number.', 'to');
-  if (!payout.name.trim()) throw new ApiError('Enter the name on the account.', 'name');
-  const was = u.payout; u.payout = payout;
-  audit('Changed payout account', u.name, `${was ? `${was.method} to ` : ''}${payout.method === 'bank' ? 'bank account' : payout.method === 'mtn' ? 'MTN Mobile Money' : 'Airtel Money'} ending ${payout.to.replace(/\s/g, '').slice(-4)}, name ${payout.name.trim()}`);
+  const delayed = !!u.payout && u.ownerStatus === 'approved';
+  if (!delayed) {
+    const was = u.payout; u.payout = payout;
+    audit('Changed payout account', u.name, `${was ? `${was.method} to ` : ''}${payoutLabel(payout)}, name ${payout.name.trim()}`);
+    await commit(); return safe(u);
+  }
+  if (live) {
+    const { error } = await sb!.rpc('request_payout_change', { p_payout: { ...payout, name: payout.name.trim() } });
+    if (error) throw new ApiError(friendly(error));
+    await reload(); return safe(getDb().users.find(x => x.id === ownerId)!);
+  }
+  const review = !namesMatch(payout.name, u.name);
+  u.payoutPending = { ...payout, name: payout.name.trim() }; u.payoutPendingAt = isoNow(); u.payoutReview = review;
+  audit('Asked to change payout account', u.name, `To ${payoutLabel(payout)}, name ${payout.name.trim()}${review ? '. Name differs: admin check needed' : ''}`);
+  notify(ownerId, { kind: 'money', title: 'Payout change requested', text: `We emailed you about it. It starts in 24 hours${review ? ', after the Nestly team checks the name' : ''}. Not you? Cancel it on the payout page.`, to: '/o/settings/payout' });
+  if (review) adminIds().forEach(a => notify(a, { kind: 'review', title: 'Payout name to check', text: `${u.name} wants payments to go to an account named ${payout.name.trim()}.`, to: '/a/reviews?tab=payouts' }));
   await commit(); return safe(u);
+}
+/** Puts waiting payout changes in place once their 24 hours are up (and any admin check is done). */
+export async function applyDuePayouts() {
+  if (live) { const { data } = await sb!.rpc('apply_due_payouts'); if (data) await reload(); return; }
+  const due = Date.now() - 86400000; let n = 0;
+  getDb().users.forEach(u => { if (u.payoutPending && !u.payoutReview && u.payoutPendingAt && +new Date(u.payoutPendingAt) <= due) { u.payout = u.payoutPending; u.payoutPending = undefined; u.payoutPendingAt = undefined; u.payoutReview = false; n++; } });
+  if (n) await commit();
+}
+/** The owner cancels their own waiting payout change. */
+export async function cancelMyPayoutChange(ownerId: string) {
+  if (live) { const { error } = await sb!.rpc('cancel_my_payout_change'); if (error) throw new ApiError(friendly(error)); await reload(); return; }
+  const u = getDb().users.find(x => x.id === ownerId)!; u.payoutPending = undefined; u.payoutPendingAt = undefined; u.payoutReview = false;
+  audit('Cancelled payout change', u.name, 'From the payout settings page'); await commit();
+}
+/** The "this was not me" link from the payout email. Works without logging in. */
+export async function cancelPayoutByLink(token: string): Promise<'cancelled' | 'invalid'> {
+  if (!live) return 'invalid';
+  const { data, error } = await sb!.rpc('cancel_payout_change', { p_token: token });
+  if (error) throw new ApiError(friendly(error));
+  return data === 'cancelled' ? 'cancelled' : 'invalid';
+}
+/** Admin: approves a waiting payout change whose account name differs from the owner's. */
+export async function approvePayoutChange(ownerId: string) {
+  await adminFresh(); await wait(400);
+  if (live) { const { error } = await sb!.rpc('approve_payout_change', { p_owner: ownerId }); if (error) throw new ApiError(friendly(error)); await reload(); return; }
+  const u = getDb().users.find(x => x.id === ownerId)!; u.payoutReview = false;
+  audit('Approved payout change', u.name, 'Name on the new account checked');
+  notify(ownerId, { kind: 'money', title: 'Payout account approved', text: 'The Nestly team checked your new payout account. It starts 24 hours after you asked.', to: '/o/money' });
+  await commit();
+}
+/** Admin: refuses a waiting payout change. The old account stays. */
+export async function rejectPayoutChange(ownerId: string, reason: string) {
+  await adminFresh(); await wait(400); await fresh();
+  if (!reason.trim()) throw new ApiError('Give a reason so the owner knows what to do.', 'reason');
+  const u = getDb().users.find(x => x.id === ownerId)!; u.payoutPending = undefined; u.payoutPendingAt = undefined; u.payoutReview = false;
+  audit('Rejected payout change', u.name, reason.trim());
+  notify(ownerId, { kind: 'money', title: 'Payout change not accepted', text: `${reason.trim()} Your payout account stays as it was.`, to: '/o/settings/payout' });
+  await commit();
 }
 /** Sends a new owner to the Nestly team for checking. */
 export async function submitOwner(ownerId: string) {
@@ -1193,6 +1282,8 @@ export async function listReviewQueue() {
       .sort((a, b) => a.since.localeCompare(b.since)),
     listings: db.hostels.filter(h => h.status === 'in_review').map(h => ({ hostel: h, owner: db.users.find(u => u.id === h.ownerId), docs: db.docs.filter(d => d.hostelId === h.id),
       rooms: db.rooms.filter(r => r.hostelId === h.id).length, since: h.submittedAt ?? isoNow() })).sort((a, b) => a.since.localeCompare(b.since)),
+    payouts: db.users.filter(u => u.role === 'owner' && u.payoutPending && u.payoutReview).map(u => ({ user: safe(u), was: u.payout, next: u.payoutPending!, since: u.payoutPendingAt ?? isoNow() }))
+      .sort((a, b) => a.since.localeCompare(b.since)),
     students: db.users.filter(u => u.role === 'student' && u.idStatus === 'pending').map(u => ({ user: safe(u), doc: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_id'),
       selfie: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_selfie'), others: sameNumberClaims(u),
       uni: universityById(u.universityId), since: db.docs.find(d => d.ownerId === u.id && d.kind === 'student_id')?.uploadedAt ?? u.joined ?? isoNow() }))
@@ -1201,6 +1292,7 @@ export async function listReviewQueue() {
 }
 /** Approves an owner after checking their ID and payment account. */
 export async function approveOwner(ownerId: string) {
+  await adminFresh();
   await wait(500); await fresh(); const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
   u.ownerStatus = 'approved'; u.ownerNote = undefined;
   db.docs.filter(d => d.ownerId === ownerId && !d.hostelId).forEach(d => { d.status = 'accepted'; });
@@ -1210,6 +1302,7 @@ export async function approveOwner(ownerId: string) {
 }
 /** Rejects an owner with a reason they can read. */
 export async function rejectOwner(ownerId: string, reason: string) {
+  await adminFresh();
   await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason so the owner knows what to fix.', 'reason');
   const db = getDb(); const u = db.users.find(x => x.id === ownerId)!;
   u.ownerStatus = 'rejected'; u.ownerNote = reason.trim();
@@ -1219,6 +1312,7 @@ export async function rejectOwner(ownerId: string, reason: string) {
 }
 /** Publishes a listing on Explore. */
 export async function approveListing(hid: string) {
+  await adminFresh();
   await wait(500); await fresh(); const db = getDb(); const h = hostelById(hid)!; const owner = db.users.find(u => u.id === h.ownerId);
   if (owner?.ownerStatus !== 'approved') throw new ApiError(`Approve ${owner?.name ?? 'the owner'} first. Listings go live only for checked owners.`);
   h.status = 'live'; h.verified = true; h.reviewNote = undefined; h.reviewSections = undefined; h.listedAt = h.listedAt ?? isoNow();
@@ -1228,6 +1322,7 @@ export async function approveListing(hid: string) {
 }
 /** Sends a listing back to the owner with a note and the sections to fix. */
 export async function requestChanges(hid: string, note: string, sections: string[] = []) {
+  await adminFresh();
   await wait(500); await fresh(); if (!note.trim()) throw new ApiError('Tell the owner what to change.', 'note');
   const h = hostelById(hid)!; h.status = 'changes_requested'; h.reviewNote = note.trim(); h.reviewSections = sections.length ? sections : undefined;
   notify(h.ownerId, { kind: 'review', title: `Changes requested for ${h.name}`, text: note.trim(), to: `/o/hostels/${hid}` });
@@ -1277,12 +1372,14 @@ export async function listUsers() {
 }
 /** Pauses an account with a reason, so the person cannot log in. */
 export async function suspendUser(userId: string, reason: string) {
+  await adminFresh();
   await wait(500); await fresh(); if (!reason.trim()) throw new ApiError('Give a reason.', 'reason');
   const u = getDb().users.find(x => x.id === userId)!; u.suspended = true; u.suspendReason = reason.trim();
   audit('Paused account', u.name, reason.trim()); await commit();
 }
 /** Lets a paused account log in again. */
 export async function restoreUser(userId: string) {
+  await adminFresh();
   await wait(400); await fresh(); const u = getDb().users.find(x => x.id === userId)!; u.suspended = false; u.suspendReason = undefined;
   audit('Restored account', u.name, ''); await commit();
 }
@@ -1361,3 +1458,56 @@ function syncDistance(h: Hostel) {
   h.km = Math.max(0.1, +distanceKm(u, p).toFixed(1)); h.dir = Math.round(bearing(u, p));
 }
 onFreshData(() => getDb().hostels.forEach(h => { syncTypeCounts(h.id); syncDistance(h); }));
+
+/* ---------- Security signals and reports (admin) ---------- */
+export type SecuritySignals = {
+  failedLogins: { login: string; n: number; last: string }[]; sharedPayers: { phone: string; students: number }[];
+  cancellations: { hostelId: string; name: string; n: number }[]; studentNumbers: { uni: string; number: string; n: number }[];
+  payoutChanges: { ownerId: string; name: string; accountName: string; review: boolean; at: string }[];
+};
+/** Things worth an admin's look: repeated wrong passwords, one phone paying for many students, many cancellations, shared student numbers, waiting payout changes. */
+export async function securitySignals(): Promise<SecuritySignals> {
+  if (live) {
+    const { data, error } = await sb!.rpc('security_signals'); if (error) throw new ApiError(friendly(error));
+    const d = data as Record<string, Record<string, unknown>[]>;
+    return {
+      failedLogins: (d.failed_logins ?? []).map(x => ({ login: String(x.login), n: Number(x.n), last: String(x.last) })),
+      sharedPayers: (d.shared_payers ?? []).map(x => ({ phone: String(x.phone), students: Number(x.students) })),
+      cancellations: (d.cancellations ?? []).map(x => ({ hostelId: String(x.hostel_id), name: String(x.name), n: Number(x.n) })),
+      studentNumbers: (d.student_numbers ?? []).map(x => ({ uni: String(x.uni), number: String(x.number), n: Number(x.n) })),
+      payoutChanges: (d.payout_changes ?? []).map(x => ({ ownerId: String(x.owner_id), name: String(x.name), accountName: String(x.account_name ?? ''), review: !!x.review, at: String(x.at) })),
+    };
+  }
+  await wait(250); const db = getDb(); const week = Date.now() - 7 * 86400000;
+  const canc = new Map<string, number>(); db.bookings.filter(b => b.status === 'cancelled' && b.at && +new Date(b.at) > week).forEach(b => canc.set(b.hostelId, (canc.get(b.hostelId) ?? 0) + 1));
+  const nums = new Map<string, number>(); db.users.filter(u => u.studentNo && u.idStatus && u.idStatus !== 'none' && u.idStatus !== 'needs_photo').forEach(u => { const k = `${u.universityId}|${u.studentNo!.toUpperCase()}`; nums.set(k, (nums.get(k) ?? 0) + 1); });
+  return {
+    failedLogins: [], sharedPayers: [],
+    cancellations: [...canc].filter(([, n]) => n >= 3).map(([hid, n]) => ({ hostelId: hid, name: hostelById(hid)?.name ?? hid, n })),
+    studentNumbers: [...nums].filter(([, n]) => n >= 2).map(([k, n]) => { const [uid, no] = k.split('|'); return { uni: universityById(uid!)?.short ?? uid!, number: no!, n }; }),
+    payoutChanges: db.users.filter(u => u.payoutPending).map(u => ({ ownerId: u.id, name: u.name, accountName: u.payoutPending!.name, review: !!u.payoutReview, at: u.payoutPendingAt ?? isoNow() })),
+  };
+}
+export type SecurityReport = { id: string; text: string; contact: string; at: string; closed: boolean };
+const REPORTS = 'nestly.demo.securityReports';
+/** Anyone (no account needed) reports a security problem to the Nestly team. */
+export async function reportSecurityProblem(text: string, contact: string) {
+  if (text.trim().length < 20) throw new ApiError('Describe the problem in a few sentences.', 'text');
+  if (live) { const { error } = await sb!.rpc('report_security_problem', { p_text: text, p_contact: contact }); if (error) throw new ApiError(friendly(error)); return; }
+  await wait(500);
+  storage.set(REPORTS, [{ id: id('sr'), text: text.trim(), contact: contact.trim(), at: isoNow(), closed: false }, ...storage.get<SecurityReport[]>(REPORTS, [])]);
+  getDb().users.filter(u => u.role === 'admin').forEach(a => notify(a.id, { kind: 'review', title: 'Security problem reported', text: text.trim().slice(0, 120), to: '/a/overview' })); await commit();
+}
+/** Admin: the security reports, newest first. */
+export async function listSecurityReports(): Promise<SecurityReport[]> {
+  if (live) {
+    const { data, error } = await sb!.from('security_reports').select('*').order('at', { ascending: false }).limit(50); if (error) throw new ApiError(friendly(error));
+    return (data ?? []).map(r => ({ id: String(r.id), text: r.text, contact: r.contact, at: r.at, closed: r.closed }));
+  }
+  await wait(200); return storage.get<SecurityReport[]>(REPORTS, []);
+}
+/** Admin: marks a security report as dealt with. */
+export async function closeSecurityReport(rid: string) {
+  if (live) { const { error } = await sb!.from('security_reports').update({ closed: true }).eq('id', Number(rid)); if (error) throw new ApiError(friendly(error)); return; }
+  storage.set(REPORTS, storage.get<SecurityReport[]>(REPORTS, []).map(r => (r.id === rid ? { ...r, closed: true } : r)));
+}

@@ -17,6 +17,8 @@ export interface User {
   ownerStatus?: OwnerStatus; ownerNote?: string; // owners only
   /** The owner's own account. Students' booking fees are paid straight into it; Nestly never holds the money. */
   payout?: { method: 'mtn' | 'airtel' | 'bank'; to: string; name: string; bank?: string };
+  /** A requested payout account change: it starts 24 hours after payoutPendingAt, and after an admin check when payoutReview is true. */
+  payoutPending?: { method: 'mtn' | 'airtel' | 'bank'; to: string; name: string; bank?: string }; payoutPendingAt?: string; payoutReview?: boolean;
   /** Monthly Nestly subscription, paid by the owner. Last day it covers (ISO date). */
   subPaidUntil?: string;
   /** Extra time an admin gave before listings can be paused for an unpaid subscription (ISO date). */ subGraceUntil?: string;

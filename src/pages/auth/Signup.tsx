@@ -11,6 +11,7 @@ import { fitImage } from '../../lib/art';
 import { Segmented } from '../../components/Segmented';
 import { useUser } from '../../services/session';
 import { AuthLayout } from './AuthLayout';
+import { Captcha, captchaOn } from '../../components/Captcha';
 import { Steps } from '../../components/Steps';
 import { UniLogo } from '../../components/UniLogo';
 import { takeNext } from '../../components/AccountGate';
@@ -87,7 +88,7 @@ function Details({ uniId, via, setVia, onBack, onDone }: { uniId: string; via: '
   const [f, setF] = useState({ name: '', email: '', password: '', agree: false, studentNo: '' });
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [serverErr, setServerErr] = useState<{ field?: string; msg: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false); const [captcha, setCaptcha] = useState(''); const [again, setAgain] = useState(0);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => { setF({ ...f, [k]: k === 'agree' ? e.target.checked : e.target.value }); if (serverErr?.field === k) setServerErr(null); };
   const errs: Record<string, string | null> = {
     name: f.name.trim().split(/\s+/).length < 2 ? 'Enter your first and last name.' : null,
@@ -100,13 +101,15 @@ function Details({ uniId, via, setVia, onBack, onDone }: { uniId: string; via: '
   async function submit(e: FormEvent) {
     e.preventDefault(); setTouched({ name: true, email: true, password: true, agree: true, studentNo: true });
     if (Object.values(errs).some(Boolean)) return;
+    if (captchaOn && !captcha) return setServerErr({ msg: 'Please complete the check that you are not a robot.' });
     setBusy(true);
     try {
-      if (byId) await signupStudentWithId({ uniId, name: f.name, email: f.email, password: f.password, studentNo: f.studentNo });
-      else await signupStudent({ uniId, name: f.name, email: f.email, password: f.password });
+      const captchaToken = captcha || undefined;
+      if (byId) await signupStudentWithId({ uniId, name: f.name, email: f.email, password: f.password, studentNo: f.studentNo, captchaToken });
+      else await signupStudent({ uniId, name: f.name, email: f.email, password: f.password, captchaToken });
       onDone(f.email.trim().toLowerCase());
     }
-    catch (x) { const a = x as ApiError; setServerErr({ field: a.field, msg: a.message }); }
+    catch (x) { const a = x as ApiError; setServerErr({ field: a.field, msg: a.message }); setAgain(n => n + 1); }
     finally { setBusy(false); }
   }
   const blur = (k: string) => () => setTouched(t => ({ ...t, [k]: true }));
@@ -128,6 +131,8 @@ function Details({ uniId, via, setVia, onBack, onDone }: { uniId: string; via: '
     </div>
     <label className={'check small' + (show('agree') ? ' bad' : '')} style={{ alignItems: 'flex-start' }}><input type="checkbox" checked={f.agree} onChange={set('agree')} aria-invalid={!!show('agree') || undefined} />
       <span>I agree to the Nestly <Link to="/terms" target="_blank">terms of use</Link> and <Link to="/privacy" target="_blank">privacy policy</Link>.{show('agree') && <b className="sr-only"> {show('agree')}</b>}</span></label>
+    <Captcha onToken={setCaptcha} reset={again} />
+    {serverErr && !serverErr.field && <p className="err" role="alert">{serverErr.msg}</p>}
     <Btn type="submit" block loading={busy}>Create account</Btn>
   </form>;
 }
@@ -135,13 +140,17 @@ function Details({ uniId, via, setVia, onBack, onDone }: { uniId: string; via: '
 /** Live mode: the confirmation email is real, so this just says where it went and lets them ask again. */
 export function CheckEmail({ email, onRestart, back = '/s/explore', idRoute, onUseId }: { email: string; onRestart: () => void; back?: string; idRoute?: boolean; onUseId?: () => void }) {
   const toast = useToast(); const nav = useNavigate();
-  const [cool, setCool] = useState(45); const [busy, setBusy] = useState(false);
+  const [cool, setCool] = useState(45); const [busy, setBusy] = useState(false); const [captcha, setCaptcha] = useState(''); const [again, setAgain] = useState(0);
   useEffect(() => { if (cool <= 0) return; const t = setTimeout(() => setCool(c => c - 1), 1000); return () => clearTimeout(t); }, [cool]);
-  async function resend() { setBusy(true); try { await resendConfirmation(email, back); setCool(60); toast('Sent again. Check your inbox and spam folder.'); } catch (x) { toast((x as Error).message); } finally { setBusy(false); } }
+  async function resend() {
+    if (captchaOn && !captcha) return toast('Please complete the check that you are not a robot first.');
+    setBusy(true); try { await resendConfirmation(email, back, captcha || undefined); setCool(60); toast('Sent again. Check your inbox and spam folder.'); } catch (x) { toast((x as Error).message); } finally { setBusy(false); setAgain(n => n + 1); }
+  }
   return <div className="stack">
     <div className="check-mail"><span className="icon-tile primary"><Mail size={20} /></span><p>We sent a link to <b>{email}</b>. Open it to confirm your email, then log in.{idRoute ? ' Next you add a photo of your student ID and a selfie holding it.' : ''}</p></div>
     <p className="small muted">Not there after a minute? Check spam or promotions.</p>
     {onUseId && <div className="banner warn" style={{ alignItems: 'flex-start' }}><IdCard size={18} className="ic" /><span className="grow small">Still nothing after a few minutes? Some university mail servers block our emails. <button type="button" className="btn btn-text btn-sm" style={{ padding: 0, minHeight: 0, height: "auto", display: "inline" }} onClick={onUseId}>Use your student ID instead</button></span></div>}
+    {cool <= 0 && <Captcha onToken={setCaptcha} reset={again} />}
     <div className="row between wrap" style={{ gap: 8 }}>
       <Btn kind="secondary" size="sm" loading={busy} disabled={cool > 0} onClick={resend}><RefreshCw size={15} />{cool > 0 ? `Send again in ${cool}s` : 'Send again'}</Btn>
       <button type="button" className="btn btn-text btn-sm" onClick={onRestart}>Wrong email? Change it</button></div>

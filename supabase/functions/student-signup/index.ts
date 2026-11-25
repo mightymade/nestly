@@ -17,7 +17,7 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 export async function handle(req: Request, env: { url: string; serviceKey: string; anonKey: string }): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return reply({ error: 'Use POST.' }, 405);
-  let input: { uniId?: string; name?: string; email?: string; password?: string; studentNo?: string; phone?: string; redirectTo?: string };
+  let input: { uniId?: string; name?: string; email?: string; password?: string; studentNo?: string; phone?: string; redirectTo?: string; captchaToken?: string };
   try { input = await req.json(); } catch { return reply({ error: 'Send your details.' }, 400); }
   const uniId = String(input.uniId ?? '');
   const name = String(input.name ?? '').trim().replace(/\s+/g, ' ');
@@ -31,6 +31,9 @@ export async function handle(req: Request, env: { url: string; serviceKey: strin
   if (password.length < 8 || !/[a-z]/i.test(password) || !/\d/.test(password)) return reply({ error: 'Use 8+ characters with letters and numbers.', field: 'password' }, 400);
 
   const admin = createClient(env.url, env.serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  // At most 5 sign-ups an hour from one network address.
+  const ip = (req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '').split(',')[0]!.trim().slice(0, 64);
+  if (ip) { const { data: ok } = await admin.rpc('rate_ok', { p_key: 'signup-ip:' + ip, p_max: 5, p_seconds: 3600 }); if (ok === false) return reply({ error: 'Too many sign-ups from this network. Try again in an hour.' }, 429); }
   const { data: uni } = await admin.from('universities').select('id, short').eq('id', uniId).maybeSingle();
   if (!uni) return reply({ error: 'Choose your university first.' }, 400);
   // Only an approved account holds a student number, so a pending or rejected claim never locks anyone out.
@@ -44,9 +47,10 @@ export async function handle(req: Request, env: { url: string; serviceKey: strin
   const anon = createClient(env.url, env.anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const redirectTo = typeof input.redirectTo === 'string' && /^https?:\/\//.test(input.redirectTo) ? input.redirectTo : undefined;
   const { data: made, error } = await anon.auth.signUp({ email, password,
-    options: { emailRedirectTo: redirectTo, data: { role: 'student', verify: 'id', university_id: uniId, name, phone, student_no: studentNo } } });
+    options: { emailRedirectTo: redirectTo, captchaToken: input.captchaToken ? String(input.captchaToken) : undefined, data: { role: 'student', verify: 'id', university_id: uniId, name, phone, student_no: studentNo } } });
   if (error || !made.user) {
     if (/rate|seconds/i.test(error?.message ?? '')) return reply({ error: 'Too many sign-ups just now. Wait a minute and try again.' }, 429);
+    if (/captcha/i.test(error?.message ?? '')) return reply({ error: 'Please complete the check that you are not a robot, then try again.', captcha: true }, 400);
     const dup = /already|registered|exists/i.test(error?.message ?? '');
     return reply({ error: dup ? 'An account with this email already exists. Log in instead.' : 'We could not create your account. Try again.', field: dup ? 'email' : undefined }, 400);
   }

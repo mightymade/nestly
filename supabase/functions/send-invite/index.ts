@@ -49,6 +49,9 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (!who?.user) return reply({ error: 'Log in again, then try once more.' }, 401);
   const { data: me } = await admin.from('profiles').select('id, name, role, owner_status, suspended').eq('id', who.user.id).maybeSingle();
   if (!me || me.role !== 'owner' || me.owner_status !== 'approved' || me.suspended) return reply({ error: 'Only an approved owner can send invites.' }, 403);
+  // At most 20 invite emails an hour per owner.
+  const { data: okRate } = await admin.rpc('rate_ok', { p_key: 'invite:' + me.id, p_max: 20, p_seconds: 3600 });
+  if (okRate === false) return reply({ error: 'You have sent many invites in the last hour. Try again later.' }, 429);
   const { data: inv } = await admin.from('invites').select('*').eq('code', code).maybeSingle();
   const { data: h } = inv ? await admin.from('hostels').select('id, name, owner_id').eq('id', inv.hostel_id).maybeSingle() : { data: null };
   if (!inv || !h || h.owner_id !== me.id) return reply({ error: 'That invite was not found.' }, 404);

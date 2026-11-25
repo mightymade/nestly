@@ -22,6 +22,7 @@ Run the files in this order:
 9. `0009_rent_balance.sql`: the booking fee counts toward the rent, a student checks in only after paying the balance, and only staff can sign visitors out
 10. `0010_student_id.sql`: students can sign up with any email and a student ID, which an admin checks
 11. `0011_student_id_v2.sql`: the student ID check asks for a selfie too, only approved accounts hold a student number, and each university says whether its emails arrive
+12. `0012_security.sql`: security hardening (see section 8). Admins need two-step login after this, so read section 8 before running it on the live project
 
 If one fails, stop and send the error message. Don't run the next file.
 
@@ -152,7 +153,7 @@ Booking fees and owner subscriptions are paid by MTN or Airtel mobile money thro
    update public.profiles set role = 'admin', owner_status = null where email = 'you@example.com';
    ```
 
-3. Log out of the app and log in again. You land on the admin Overview.
+3. Log out of the app and log in again. After 0012, the app asks you to set up two-step login first (an authenticator app on your phone), then you land on the admin Overview.
 
 ## 7. Run the app
 
@@ -166,6 +167,78 @@ npm run dev
 To run on the demo data instead, start it with `VITE_DATA=demo npm run dev`, or remove `.env`.
 
 **On Vercel:** go to Project > Settings > Environment Variables and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` with the same values as `.env`. Then redeploy.
+
+## 8. Security set-up (after 0012)
+
+Do these in order. Each one is free.
+
+### 8.1 Deploy the new and changed server functions
+
+In **Edge Functions**, deploy or redeploy each one by pasting its file:
+
+| Function | File | Verify JWT |
+|---|---|---|
+| `login` (new) | `supabase/functions/login/index.ts` | **off** |
+| `send-mail` (new) | `supabase/functions/send-mail/index.ts` | **off** |
+| `backup` (new) | `supabase/functions/backup/index.ts` | **off** |
+| `student-signup` | `supabase/functions/student-signup/index.ts` | as before |
+| `send-invite` | `supabase/functions/send-invite/index.ts` | as before |
+| `accept-invite` | `supabase/functions/accept-invite/index.ts` | as before |
+| `payments` | `supabase/functions/payments/index.ts` | **off** (as before) |
+
+In **Edge Functions > Secrets**, add `CRON_SECRET`: any long random text (for example, 40 letters and numbers from a password generator). Keep `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `SITE_URL` from section 5c.
+
+In **SQL Editor**, tell Nestly its address so links in security emails work:
+
+```sql
+update public.config set site_url = 'https://nestly-ug.vercel.app' where id = 1;
+```
+
+### 8.2 Scheduled jobs
+
+In **Database > Extensions**, turn on `pg_cron` and `pg_net`. Then in **SQL Editor** run this, after replacing `YOUR-PROJECT-REF` (from your project URL) and `YOUR-CRON-SECRET` (from 8.1):
+
+```sql
+select cron.schedule('nestly-send-mail', '* * * * *', $$
+  select net.http_post(url := 'https://YOUR-PROJECT-REF.supabase.co/functions/v1/send-mail',
+    headers := '{"Content-Type": "application/json", "x-cron-secret": "YOUR-CRON-SECRET"}'::jsonb, body := '{}'::jsonb) $$);
+select cron.schedule('nestly-backup', '0 0 * * *', $$
+  select net.http_post(url := 'https://YOUR-PROJECT-REF.supabase.co/functions/v1/backup',
+    headers := '{"Content-Type": "application/json", "x-cron-secret": "YOUR-CRON-SECRET"}'::jsonb, body := '{}'::jsonb, timeout_milliseconds := 60000) $$);
+select cron.schedule('nestly-payouts', '15 * * * *', $$ select public.apply_due_payouts() $$);
+select cron.schedule('nestly-clean-up', '30 1 * * *', $$ select public.purge_old_data() $$);
+```
+
+These send security emails every minute, back up the tables at 3 am Uganda time, start payout changes whose 24 hours are up, and delete old data (visitor logs after 30 days, login records after 90 days, accounts never confirmed after 30 days). To check them: `select * from cron.job_run_details order by start_time desc limit 20;`
+
+### 8.3 CAPTCHA (stops bots at sign-up, login and password reset)
+
+1. At [dash.cloudflare.com](https://dash.cloudflare.com), sign up free, open **Turnstile > Add widget**, name it Nestly, add your site's domain (`nestly-ug.vercel.app`, plus `localhost` for testing), choose **Managed**.
+2. Copy the **Site key** into Vercel: **Project > Settings > Environment Variables** > `VITE_TURNSTILE_SITE_KEY`. Redeploy.
+3. Copy the **Secret key** into Supabase: **Authentication > Attack Protection > Enable CAPTCHA protection**, provider **Turnstile**, paste it, save.
+
+Do step 3 only after step 2 is live, or nobody can log in.
+
+### 8.4 Two-step login
+
+**Authentication > Multi-Factor** should show TOTP (authenticator app) enabled; it is on by default. After 0012, admin powers only work after the admin passes two-step login, and approving, rejecting or pausing accounts needs a password or code from the last 15 minutes. Owners can turn it on in **Settings > Two-step login**. If an admin loses their phone, another admin removes the factor in **Authentication > Users > (the user) > Remove MFA factors**.
+
+### 8.5 GitHub
+
+In the repository, open **Settings > Code security** and turn on **Dependabot alerts** and **Dependabot security updates**. The `.github` folder already has the Dependabot settings and a **Checks** workflow that, on every push, checks libraries for known security holes, looks for secrets written in the code, and builds the site. **Secret scanning** with push protection is free only for public repositories; for a private repository the Checks workflow is the fallback.
+
+### 8.6 Practise a restore (do it once, then each semester)
+
+1. In **Storage > backups**, download the newest `nestly-....json`.
+2. Create a second, empty Supabase project. Run migrations `0001` to `0012` in it.
+3. On your computer, in the Nestly folder: `SUPABASE_URL=https://NEW-REF.supabase.co SERVICE_KEY=<new project's service role key> node scripts/restore.mjs nestly-....json`
+4. Check the row counts it prints against the old project, then delete the test project.
+
+Logins live in Supabase Auth and are not in the backup: after a real disaster, people reset their passwords. Uploaded files stay in Storage.
+
+### 8.7 The law
+
+Before real users join, register Nestly with the **Personal Data Protection Office (PDPO)** at [pdpo.go.ug](https://pdpo.go.ug), as the Data Protection and Privacy Act, 2019 requires. The privacy policy page already lists what Nestly keeps and for how long.
 
 ## Keys: what is safe where
 
